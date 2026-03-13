@@ -130,16 +130,22 @@ function RepertoireInfo() {
       setCoverageLoading(false);
       return;
     }
+    const controller = new AbortController();
     const version = ++coverageVersionRef.current;
     setCoverageLoading(true);
-    computeTreeCoverage(root, orientation, referenceDb, minGames, startPath).then((result) => {
-      if (version === coverageVersionRef.current) {
-        setCoverageMap(result.coverageMap);
-        setGamesMap(result.gamesMap);
-        setMissingGamesMap(result.missingGamesMap);
-        setCoverageLoading(false);
-      }
-    });
+    computeTreeCoverage(root, orientation, referenceDb, minGames, startPath, controller.signal)
+      .then((result) => {
+        if (version === coverageVersionRef.current) {
+          setCoverageMap(result.coverageMap);
+          setGamesMap(result.gamesMap);
+          setMissingGamesMap(result.missingGamesMap);
+          setCoverageLoading(false);
+        }
+      })
+      .catch(() => {
+        // AbortError is expected when the effect re-triggers
+      });
+    return () => controller.abort();
   }, [rootStructureHash, orientation, referenceDb, startPathKey, minGames]);
 
   const positionMoves = useMemo(() => {

@@ -23,6 +23,7 @@ export async function computeTreeCoverage(
     dbPath: string,
     minGames: number,
     startPath: number[] = [],
+    signal?: AbortSignal,
 ): Promise<{
     coverageMap: Map<string, number>;
     gamesMap: Map<string, number>;
@@ -34,65 +35,90 @@ export async function computeTreeCoverage(
     const missingGamesMap = new Map<string, number>();
     const fenCoverageCache = new Map<string, Promise<number>>();
     const fenMissingCache = new Map<string, number>();
+    const dbMovesCache = new Map<
+        string,
+        Promise<{ moves: { move: string; games: number }[]; total: number }>
+    >();
 
     async function getDbMoves(
         fen: string,
     ): Promise<{ moves: { move: string; games: number }[]; total: number }> {
-        try {
-            const [openings] = await searchPosition(
-                {
-                    path: dbPath,
-                    type: "exact",
-                    fen,
-                    color: "white",
-                    player: null,
-                    result: "any",
-                } as LocalOptions,
-                "coverage-calc",
-            );
-
-            const summary = openings.find((op) => op.move === "*");
-            const moves = openings
-                .filter((op) => op.move !== "*")
-                .map((op) => ({
-                    move: op.move,
-                    games: op.white + op.draw + op.black,
-                }));
-
-            const gamesEndingHere = summary ? summary.white + summary.draw + summary.black : 0;
-
-            const gamesContinuing = moves.reduce((acc, m) => acc + m.games, 0);
-
-            const total = gamesEndingHere + gamesContinuing;
-
-            return { moves, total };
-        } catch {
-            return { moves: [], total: 0 };
+        if (dbMovesCache.has(fen)) {
+            return dbMovesCache.get(fen)!;
         }
+
+        const promise = (async () => {
+            if (signal?.aborted) {
+                throw new DOMException("Aborted", "AbortError");
+            }
+
+            try {
+                const [openings] = await searchPosition(
+                    {
+                        path: dbPath,
+                        type: "exact",
+                        fen,
+                        color: "white",
+                        player: null,
+                        result: "any",
+                    } as LocalOptions,
+                    "coverage-calc",
+                );
+
+                const summary = openings.find((op) => op.move === "*");
+                const moves = openings
+                    .filter((op) => op.move !== "*")
+                    .map((op) => ({
+                        move: op.move,
+                        games: op.white + op.draw + op.black,
+                    }));
+
+                const gamesEndingHere = summary ? summary.white + summary.draw + summary.black : 0;
+
+                const gamesContinuing = moves.reduce((acc, m) => acc + m.games, 0);
+
+                const total = gamesEndingHere + gamesContinuing;
+
+                return { moves, total };
+            } catch {
+                return { moves: [], total: 0 };
+            }
+        })();
+
+        dbMovesCache.set(fen, promise);
+        return promise;
     }
 
     async function compute(node: TreeNode, path: number[]): Promise<number> {
+        if (signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
+        }
+
         const pathKey = path.join(",");
 
-        if (node.children.length === 0 && fenCoverageCache.has(node.fen)) {
-            const transpositionCoverage = await fenCoverageCache.get(node.fen)!;
-            coverageMap.set(pathKey, transpositionCoverage);
-            const { total: totalGames } = await getDbMoves(node.fen);
-            gamesMap.set(pathKey, totalGames);
+        // If we've already computed (or are computing) this FEN, reuse the result
+        if (fenCoverageCache.has(node.fen)) {
+            const cachedCoverage = await fenCoverageCache.get(node.fen)!;
+            coverageMap.set(pathKey, cachedCoverage);
+            // Reuse cached db results instead of re-searching
+            if (dbMovesCache.has(node.fen)) {
+                const { total } = await dbMovesCache.get(node.fen)!;
+                gamesMap.set(pathKey, total);
+            }
             missingGamesMap.set(pathKey, fenMissingCache.get(node.fen) ?? 0);
-            return transpositionCoverage;
+            return cachedCoverage;
         }
 
-        if (node.children.length > 0 && !fenCoverageCache.has(node.fen)) {
-            const promise = computeNode(node, path);
-            fenCoverageCache.set(node.fen, promise);
-            return promise;
-        }
-
-        return computeNode(node, path);
+        const promise = computeNode(node, path);
+        fenCoverageCache.set(node.fen, promise);
+        return promise;
     }
 
     async function computeNode(node: TreeNode, path: number[]): Promise<number> {
+        if (signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
+        }
+
         const pathKey = path.join(",");
 
         const { moves: dbMoves, total: totalGames } = await getDbMoves(node.fen);
