@@ -1,18 +1,6 @@
-import {
-  Badge,
-  Box,
-  Button,
-  Card,
-  Group,
-  ScrollArea,
-  SimpleGrid,
-  Stack,
-  Text,
-  Tooltip,
-  UnstyledButton,
-} from "@mantine/core";
-import { useAtom, useSetAtom, useStore } from "jotai";
-import { useCallback, useEffect, useState } from "react";
+import { commands } from "@/bindings";
+import { FileIcon } from "@/components/files/FileIcon";
+import { getStats } from "@/components/files/opening";
 import {
   activeTabAtom,
   addRecentFileAtom,
@@ -25,9 +13,20 @@ import {
 import type { Tab } from "@/utils/tabs";
 import { createTab } from "@/utils/tabs";
 import { unwrap } from "@/utils/unwrap";
-import CreateRepertoireModal from "./CreateRepertoireModal";
-import ImportModal from "./ImportModal";
-import classes from "./NewTabHome.module.css";
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Button,
+  Card,
+  Group,
+  ScrollArea,
+  SimpleGrid,
+  Stack,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from "@mantine/core";
 import {
   IconChess,
   IconClock,
@@ -35,15 +34,18 @@ import {
   IconPuzzle,
   IconTarget,
   IconTargetArrow,
+  IconX,
 } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import { useAtom, useSetAtom, useStore } from "jotai";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands } from "@/bindings";
-import { getStats } from "@/components/files/opening";
 import Chessboard from "../icons/Chessboard";
-import { FileIcon } from "@/components/files/FileIcon";
+import CreateRepertoireModal from "./CreateRepertoireModal";
+import ImportModal from "./ImportModal";
+import classes from "./NewTabHome.module.css";
 
 dayjs.extend(relativeTime);
 
@@ -66,7 +68,16 @@ function RecentFileDuePositions({ file }: { file: string }) {
   );
 }
 
-function RecentFileRow({ file, onOpen }: { file: RecentFile; onOpen: (file: RecentFile) => void }) {
+function RecentFileRow({
+  file,
+  onOpen,
+  onRemove,
+}: {
+  file: RecentFile;
+  onOpen: (file: RecentFile) => void;
+  onRemove: (file: RecentFile) => void;
+}) {
+  const { t } = useTranslation();
   const displayName = file.name.replace(/\.pgn$/i, "");
 
   return (
@@ -97,6 +108,20 @@ function RecentFileRow({ file, onOpen }: { file: RecentFile; onOpen: (file: Rece
                 {dayjs(file.lastOpened).fromNow()}
               </Text>
             </Group>
+          </Tooltip>
+          <Tooltip label={t("Home.RecentFiles.RemoveFromList")}>
+            <ActionIcon
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(file);
+              }}
+              variant="subtle"
+              color="gray"
+              size="xs"
+              className={classes.removeBtn}
+            >
+              <IconX size={12} />
+            </ActionIcon>
           </Tooltip>
         </Group>
       </Group>
@@ -134,6 +159,13 @@ export default function NewTabHome({ id }: { id: string }) {
     };
     checkFiles();
   }, []);
+
+  const removeRecentFile = useCallback(
+    (file: RecentFile) => {
+      setRecentFiles((prev) => prev.filter((f) => f.path !== file.path));
+    },
+    [setRecentFiles],
+  );
 
   const openRecentFile = useCallback(
     async (file: RecentFile) => {
@@ -282,7 +314,12 @@ export default function NewTabHome({ id }: { id: string }) {
             <ScrollArea.Autosize mah={300}>
               <Stack gap={2}>
                 {recentFiles.map((file) => (
-                  <RecentFileRow key={file.path} file={file} onOpen={openRecentFile} />
+                  <RecentFileRow
+                    key={file.path}
+                    file={file}
+                    onOpen={openRecentFile}
+                    onRemove={removeRecentFile}
+                  />
                 ))}
               </Stack>
             </ScrollArea.Autosize>

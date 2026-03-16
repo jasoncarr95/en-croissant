@@ -5,3 +5,11 @@
 [data-mantine-color-scheme="light"] .recentFileRow:hover {
   background-color: var(--mantine-color-gray-1);
 }
+
+.recentFileRow .removeBtn {
+  opacity: 0;
+}
+
+.recentFileRow:hover .removeBtn {
+  opacity: 1;
+}

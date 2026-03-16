@@ -401,6 +401,7 @@
     "Home.Personal.Ratings": "Ratings",
     "Home.PuzzleTraining": "Puzzle Training",
     "Home.RecentFiles.NoRecentFiles": "No files open recently",
+    "Home.RecentFiles.RemoveFromList": "Remove from list",
     "Home.RecentFiles.Title": "Recent Files",
     "Import.GameURL": "Game URL (lichess or chess.com)",
     "Import.Importing": "Importing...",
