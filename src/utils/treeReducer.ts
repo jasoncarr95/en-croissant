@@ -163,7 +163,7 @@ export function getGameName(headers: GameHeaders) {
     if ((headers.white && headers.white !== "?") || (headers.black && headers.black !== "?")) {
         return `${headers.white} - ${headers.black}`;
     }
-    if (headers.event) {
+    if (headers.event && headers.event !== "?") {
         return headers.event;
     }
     return "Unknown";

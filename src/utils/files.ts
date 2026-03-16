@@ -1,5 +1,5 @@
 import { Result } from "@badrap/result";
-import { resolve } from "@tauri-apps/api/path";
+import { basename, resolve } from "@tauri-apps/api/path";
 import { exists, writeTextFile } from "@tauri-apps/plugin-fs";
 import { platform } from "@tauri-apps/plugin-os";
 import { defaultGame, makePgn } from "chessops/pgn";
@@ -58,11 +58,14 @@ export async function openFile(
 
         if (pgn) {
             const tree = await parsePGN(pgn);
-            tabName = getGameName(tree.headers);
+            const gameName = getGameName(tree.headers);
+            tabName =
+                gameName === "Unknown" ? (await basename(file)).replace(/\.pgn$/i, "") : gameName;
             recentName = tabName;
         } else {
-            tabName = file;
-            recentName = file;
+            const fileBaseName = (await basename(file)).replace(/\.pgn$/i, "");
+            tabName = fileBaseName;
+            recentName = fileBaseName;
         }
     } else {
         fileInfo = file;

@@ -112,7 +112,7 @@ export default function ImportModal({
             sessionStorage.setItem(prev.value, JSON.stringify({ version: 0, state: tree }));
             return {
               ...prev,
-              name: getGameName(tree.headers),
+              name: save && filename ? filename : getGameName(tree.headers),
               gameOrigin: {
                 kind: originKind,
                 file: fileInfo,
@@ -129,6 +129,39 @@ export default function ImportModal({
               type: fileInfo.metadata.type,
             });
           }
+        } else if (save && filename) {
+          const newFile = await createFile({
+            filename,
+            filetype,
+            pgn,
+            dir: documentDir,
+          });
+          if (newFile.isErr) {
+            setError(newFile.error.message);
+            setLoading(false);
+            return;
+          }
+          const fileInfo = newFile.value;
+          const input = unwrap(await commands.readGames(fileInfo.path, 0, 0))[0];
+          const tree = await parsePGN(input);
+          setCurrentTab((prev) => {
+            sessionStorage.setItem(prev.value, JSON.stringify({ version: 0, state: tree }));
+            return {
+              ...prev,
+              name: filename,
+              gameOrigin: {
+                kind: "file",
+                file: fileInfo,
+                gameNumber: 0,
+              },
+              type: "analysis",
+            };
+          });
+          store.set(addRecentFileAtom, {
+            name: filename,
+            path: fileInfo.path,
+            type: fileInfo.metadata.type,
+          });
         } else {
           const tempFile = await resolve(await tempDir(), `import_${Date.now()}.pgn`);
           await writeTextFile(tempFile, pgn);
