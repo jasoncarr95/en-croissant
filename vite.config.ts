@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { resolve } from "node:path";
-import react from "@vitejs/plugin-react";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import babel from "@rolldown/plugin-babel";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { defineConfig } from "vite";
 import * as os from "node:os";
@@ -14,10 +15,9 @@ export default defineConfig({
         tanstackRouter({
             target: "react",
         }),
-        react({
-            babel: {
-                plugins: ["babel-plugin-react-compiler"],
-            },
+        react(),
+        babel({
+            presets: [reactCompilerPreset()],
         }),
     ],
     server: {
@@ -41,7 +41,9 @@ export default defineConfig({
         target: process.env.TAURI_ENV_PLATFORM == "windows" ? "chrome105" : "safari13",
     },
     resolve: {
-        alias: [{ find: "@", replacement: resolve(__dirname, "./src") }],
+        alias: {
+            "@": resolve(import.meta.dirname, "./src"),
+        },
     },
     test: {
         environment: "jsdom",

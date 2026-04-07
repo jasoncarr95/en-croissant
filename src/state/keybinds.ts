@@ -16,6 +16,7 @@ const keys: KeyMap = {
     CLOSE_TAB: { name: "Close tab", keys: `${meta}+w` },
     OPEN_FILE: { name: "Open File", keys: `${meta}+o` },
     SAVE_FILE: { name: "Save File", keys: `${meta}+s` },
+    COPY_PGN: { name: "Copy PGN", keys: `${meta}+k` },
     SWAP_ORIENTATION: { name: "Swap orientation", keys: "f" },
     CLEAR_SHAPES: { name: "Clear shapes", keys: "ctrl+l" },
     NEXT_MOVE: { name: "Next move", keys: "arrowright" },
@@ -51,6 +52,7 @@ const keys: KeyMap = {
     ANNOTATION_BLUNDER: { name: "Toggle blunder move annotation", keys: "6" },
     TOGGLE_ALL_ENGINES: { name: "Toggle all engines", keys: "ctrl+a" },
     TOGGLE_BLUR: { name: "Toggle blur", keys: "ctrl+b" },
+    GENERATE_REPORT: { name: "Generate game report", keys: "f12" },
     PREVIOUS_GAME: { name: "Previous game", keys: "pageup" },
     NEXT_GAME: { name: "Next game", keys: "pagedown" },
 };

@@ -233,7 +233,7 @@ export default function DatabasesPage() {
                           <Group wrap="nowrap" miw={0}>
                             <IconDatabase size="1.5rem" />
                             <Box miw={0}>
-                              <Text fw={500}>
+                              <Text fw={500} fz="sm">
                                 {item.type === "success" ? item.title : item.error}
                               </Text>
                               <Text size="xs" c="dimmed" style={{ wordWrap: "break-word" }}>
@@ -398,11 +398,20 @@ export default function DatabasesPage() {
                         variant="default"
                         rightSection={<IconPlus size="1rem" />}
                         onClick={async () => {
-                          const file = await openDialog({
-                            filters: [{ name: "PGN", extensions: ["pgn"] }],
+                          const selected = await openDialog({
+                            multiple: true,
+                            filters: [{ name: "PGN", extensions: ["pgn", "pgn.zst"] }],
                           });
-                          if (!file || typeof file !== "string") return;
-                          const sourceFileName = await basename(file);
+                          if (!selected) return;
+
+                          const files = Array.isArray(selected) ? selected : [selected];
+                          if (files.length === 0) return;
+
+                          const firstFileName = await basename(files[0]);
+                          const sourceFileName =
+                            files.length > 1
+                              ? `${firstFileName} (+${files.length - 1})`
+                              : firstFileName;
                           setConversionState((prev) => ({
                             ...prev,
                             inProgress: true,
@@ -411,7 +420,7 @@ export default function DatabasesPage() {
                             sourceFileName,
                           }));
                           try {
-                            await commands.convertPgn(file, selectedDatabase.file, null, "", null);
+                            await commands.convertPgn(files, selectedDatabase.file, null, "", null);
                             mutate();
                           } finally {
                             setConversionState((prev) => ({

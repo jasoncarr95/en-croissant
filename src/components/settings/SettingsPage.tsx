@@ -410,7 +410,6 @@ export default function Page() {
             value={i18n.language.replace("-", "_")}
             onChange={(val) => {
               i18n.changeLanguage(val?.replace("_", "-") || "en-US");
-              localStorage.setItem("lang", val || "en_US");
             }}
           />
         ),
@@ -772,7 +771,7 @@ export default function Page() {
       <Group px="md" pt="md" pb="sm">
         <TextInput
           ref={searchInputRef}
-          placeholder="Search settings..."
+          placeholder={t("Common.Search")}
           leftSection={<IconSearch size="1rem" />}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.currentTarget.value)}
