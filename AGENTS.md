@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## What This Is
 
@@ -10,7 +10,7 @@ This is a personal fork (upstream: `franciscoBSalguworeiro/en-croissant`). The u
 
 ## Related Repos
 
-- **Docs site**: `/Users/jasoncarr/projects/RANDOM/chess/encroisssant-site/docs` — the cloned en-croissant documentation repo (guides, reference). Accessible as an additional working directory in Claude Code settings.
+- **Docs site**: `/Users/jasoncarr/projects/RANDOM/chess/encroisssant-site/docs` — the cloned en-croissant documentation repo (guides, reference). Accessible as an additional working directory in Codex settings.
 
 ## Commands
 

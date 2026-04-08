@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm lint:*)",
+      "Bash(xargs ls:*)",
+      "Bash(git -C /Users/jasoncarr/projects/RANDOM/chess/en-croissant status)",
+      "Bash(git -C /Users/jasoncarr/projects/RANDOM/chess/en-croissant diff --cached)",
+      "Bash(git -C /Users/jasoncarr/projects/RANDOM/chess/en-croissant diff)",
+      "Bash(git -C /Users/jasoncarr/projects/RANDOM/chess/en-croissant log --oneline -5)",
+      "Bash(git -C /Users/jasoncarr/projects/RANDOM/chess/en-croissant add src/utils/repertoire.ts src/components/panels/practice/RepertoireInfo.tsx)",
+      "Bash(pnpm test:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/jasoncarr/projects/RANDOM/chess/encroisssant-site/docs"
+    ]
+  }
+}
