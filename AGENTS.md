@@ -1,6 +1,10 @@
-# AGENTS.md
+# Repository Guidelines
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+> **The single canonical instructions file** for all coding agents. Claude Code
+> loads it through the `@AGENTS.md` import in `CLAUDE.md`; Codex and Cursor read
+> it natively. Add shared guidance **here** — never split content between
+> `CLAUDE.md` and this file. Path-scoped extras live in `.claude/rules/` and
+> `.cursor/rules/` (path-scoped-only; keep the two dirs in sync).
 
 ## What This Is
 
@@ -10,7 +14,7 @@ This is a personal fork (upstream: `franciscoBSalguworeiro/en-croissant`). The u
 
 ## Related Repos
 
-- **Docs site**: `/Users/jasoncarr/projects/RANDOM/chess/encroisssant-site/docs` — the cloned en-croissant documentation repo (guides, reference). Accessible as an additional working directory in Codex settings.
+- **Docs site**: `/Users/jasoncarr/projects/RANDOM/chess/encroisssant-site/docs` — the cloned en-croissant documentation repo (guides, reference). Accessible as an additional working directory in Claude Code (`.claude/settings.json`) and Codex settings.
 
 ## Commands
 
@@ -82,3 +86,12 @@ Key backend files:
 - **Zod** for validating external data (API responses, file formats)
 - **Specta** derives TypeScript types from Rust structs/enums automatically
 - Parallel processing in Rust uses Rayon; async I/O uses Tokio
+
+## Agent Instructions
+
+| File        | Owns                                                                 |
+| ----------- | -------------------------------------------------------------------- |
+| `AGENTS.md` | **The canonical agent instructions** — everything shared (this file) |
+| `CLAUDE.md` | Import shim (`@AGENTS.md`) + any Claude-only additions               |
+
+- Before creating a new `AGENTS.md` or `CLAUDE.md`, check whether one already exists and update it instead. Shared guidance goes in this file; `CLAUDE.md` stays an import shim.
