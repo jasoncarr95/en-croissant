@@ -12,11 +12,21 @@ import {
     type PuzzleDatabaseInfo,
     type QueryResponse,
 } from "@/bindings";
-import type { LocalOptions } from "@/components/panels/database/DatabasePanel";
 import { getDatabasesDir } from "@/utils/directories";
 import { unwrap } from "./unwrap";
 
 export type SuccessDatabaseInfo = Extract<DatabaseInfo, { type: "success" }>;
+
+export type LocalOptions = {
+    path: string | null;
+    fen: string;
+    type: "exact" | "partial";
+    player: number | null;
+    color: "white" | "black";
+    start_date?: string;
+    end_date?: string;
+    result: "any" | "whitewon" | "draw" | "blackwon";
+};
 
 export type Sides = "WhiteBlack" | "BlackWhite" | "Any";
 

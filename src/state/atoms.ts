@@ -17,7 +17,6 @@ import { z } from "zod";
 import type { BestMoves, GoMode } from "@/bindings";
 import { DEFAULT_TIME_CONTROL, type OpponentSettings } from "@/components/boards/OpponentForm";
 import { type Position, positionSchema } from "@/components/files/opening";
-import type { LocalOptions } from "@/components/panels/database/DatabasePanel";
 import { positionFromFen, swapMove } from "@/utils/chessops";
 import type { SuccessDatabaseInfo } from "@/utils/db";
 import { type Engine, type EngineSettings, engineSchema } from "@/utils/engines";
@@ -31,6 +30,10 @@ import { getWinChance, normalizeScore } from "@/utils/score";
 import { genID, type Tab, tabSchema } from "@/utils/tabs";
 import { getEnginesDir } from "../utils/directories";
 import type { Session } from "../utils/session";
+import {
+    currentDbTabAtom as currentDatabaseExplorerDbTabAtom,
+    type DatabasePanelTab,
+} from "./databaseExplorer";
 import { createAsyncZodStorage, createZodStorage } from "./utils";
 
 const zodArray = <Input, Output>(itemSchema: z.ZodType<Output, z.ZodTypeDef, Input>) => {
@@ -377,19 +380,7 @@ export const currentTabSelectedAtom = tabValue(tabFamily);
 const reportModalOpenFamily = atomFamily((_tab: string) => atom(false));
 export const currentReportModalOpenAtom = tabValue(reportModalOpenFamily);
 
-const localOptionsFamily = atomFamily((_tab: string) =>
-    atom<LocalOptions>({
-        path: null,
-        type: "exact",
-        fen: "",
-        player: null,
-        color: "white",
-        result: "any",
-    }),
-);
-export const currentLocalOptionsAtom = tabValue(localOptionsFamily);
-
-export const lichessOptionsAtom = atomWithStorage<LichessGamesOptions>(
+export const lichessOptionsDefaultsAtom = atomWithStorage<LichessGamesOptions>(
     "lichess-all-options",
     {
         ratings: [1000, 1200, 1400, 1600, 1800, 2000, 2200, 2500],
@@ -402,7 +393,7 @@ export const lichessOptionsAtom = atomWithStorage<LichessGamesOptions>(
     },
 );
 
-export const masterOptionsAtom = atomWithStorage<MasterGamesOptions>(
+export const masterOptionsDefaultsAtom = atomWithStorage<MasterGamesOptions>(
     "lichess-master-options",
     {},
     createZodStorage(masterOptionsSchema, localStorage),
@@ -411,13 +402,17 @@ export const masterOptionsAtom = atomWithStorage<MasterGamesOptions>(
     },
 );
 
-const dbTypeFamily = atomFamily((_tab: string) =>
-    atom<"local" | "lch_all" | "lch_master">("local"),
+export const lichessOptionsAtom = lichessOptionsDefaultsAtom;
+export const masterOptionsAtom = masterOptionsDefaultsAtom;
+export { currentDbTypeAtom, currentLocalOptionsAtom } from "./databaseExplorer";
+export const currentDbTabAtom = atom(
+    (get) => get(currentDatabaseExplorerDbTabAtom),
+    (get, set, update: string | ((current: string) => string)) => {
+        const current = get(currentDatabaseExplorerDbTabAtom);
+        const next = typeof update === "function" ? update(current) : update;
+        set(currentDatabaseExplorerDbTabAtom, next as DatabasePanelTab);
+    },
 );
-export const currentDbTypeAtom = tabValue(dbTypeFamily);
-
-const dbTabFamily = atomFamily((_tab: string) => atom("stats"));
-export const currentDbTabAtom = tabValue(dbTabFamily);
 
 const analysisTabFamily = atomFamily((_tab: string) => atom("engines"));
 export const currentAnalysisTabAtom = tabValue(analysisTabFamily);

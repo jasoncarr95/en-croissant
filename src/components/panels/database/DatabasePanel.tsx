@@ -28,7 +28,7 @@ import {
   referenceDbAtom,
   sessionsAtom,
 } from "@/state/atoms";
-import { getDatabases, type Opening, searchPosition } from "@/utils/db";
+import { getDatabases, type LocalOptions, type Opening, searchPosition } from "@/utils/db";
 import { formatNumber } from "@/utils/format";
 import { convertToNormalized, getLichessGames, getMasterGames } from "@/utils/lichess/api";
 import type { LichessGamesOptions, MasterGamesOptions } from "@/utils/lichess/explorer";
@@ -54,17 +54,6 @@ type DBType =
       fen: string;
       token: string;
     };
-
-export type LocalOptions = {
-  path: string | null;
-  fen: string;
-  type: "exact" | "partial";
-  player: number | null;
-  color: "white" | "black";
-  start_date?: string;
-  end_date?: string;
-  result: "any" | "whitewon" | "draw" | "blackwon";
-};
 
 function sortOpenings(openings: Opening[]) {
   return openings.sort((a, b) => b.black + b.draw + b.white - (a.black + a.draw + a.white));
