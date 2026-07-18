@@ -138,3 +138,37 @@ export const syncCurrentLocalFenAtom = atom(null, (get, set, fen: string) => {
         set(optionsAtom, { ...current, fen });
     }
 });
+
+function removeDatabaseExplorerState(tabId: string) {
+    localOptionsFamily.remove(tabId);
+    lichessOptionsFamily.remove(tabId);
+    masterOptionsFamily.remove(tabId);
+    dbTypeFamily.remove(tabId);
+    dbTabFamily.remove(tabId);
+    initializedFamily.remove(tabId);
+}
+
+export const removeDatabaseExplorerStateAtom = atom(null, (_get, _set, tabId: string) => {
+    removeDatabaseExplorerState(tabId);
+});
+
+export const copyDatabaseExplorerStateAtom = atom(
+    null,
+    (get, set, ids: { sourceTabId: string; targetTabId: string }) => {
+        removeDatabaseExplorerState(ids.targetTabId);
+        if (!get(initializedFamily(ids.sourceTabId))) return;
+
+        set(localOptionsFamily(ids.targetTabId), { ...get(localOptionsFamily(ids.sourceTabId)) });
+        set(
+            lichessOptionsFamily(ids.targetTabId),
+            cloneLichessOptions(get(lichessOptionsFamily(ids.sourceTabId))),
+        );
+        set(
+            masterOptionsFamily(ids.targetTabId),
+            cloneMasterOptions(get(masterOptionsFamily(ids.sourceTabId))),
+        );
+        set(dbTypeFamily(ids.targetTabId), get(dbTypeFamily(ids.sourceTabId)));
+        set(dbTabFamily(ids.targetTabId), get(dbTabFamily(ids.sourceTabId)));
+        set(initializedFamily(ids.targetTabId), true);
+    },
+);

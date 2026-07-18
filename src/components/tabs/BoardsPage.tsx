@@ -2,13 +2,17 @@ import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 import { ActionIcon, ScrollArea, Tabs } from "@mantine/core";
 import { useHotkeys, useToggle } from "@mantine/hooks";
 import { IconPlus } from "@tabler/icons-react";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { type ReactNode, startTransition, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Mosaic, type MosaicNode } from "react-mosaic-component";
 import { match } from "ts-pattern";
 import { commands } from "@/bindings";
 import { activeTabAtom, tabsAtom } from "@/state/atoms";
+import {
+  copyDatabaseExplorerStateAtom,
+  removeDatabaseExplorerStateAtom,
+} from "@/state/databaseExplorer";
 import { keyMapAtom } from "@/state/keybinds";
 import { createTab, genID, isPersistentGameOrigin, type Tab } from "@/utils/tabs";
 import { unwrap } from "@/utils/unwrap";
@@ -33,6 +37,8 @@ export default function BoardsPage() {
   const [tabs, setTabs] = useAtom(tabsAtom);
   const [activeTab, setActiveTab] = useAtom(activeTabAtom);
   const [saveModalOpened, toggleSaveModal] = useToggle();
+  const copyDatabaseExplorerState = useSetAtom(copyDatabaseExplorerStateAtom);
+  const removeDatabaseExplorerState = useSetAtom(removeDatabaseExplorerStateAtom);
 
   useEffect(() => {
     if (tabs.length === 0) {
@@ -65,12 +71,13 @@ export default function BoardsPage() {
             startTransition(() => setActiveTab(null));
           }
         }
-        setTabs((prev) => prev.filter((tab) => tab.value !== value));
+        setTabs((currentTabs) => currentTabs.filter((tab) => tab.value !== value));
+        removeDatabaseExplorerState(value);
         unwrap(await commands.killEngines(value));
         await commands.abortGame(`${value}-game`);
       }
     },
-    [tabs, activeTab, setTabs, toggleSaveModal, setActiveTab],
+    [tabs, activeTab, setTabs, toggleSaveModal, setActiveTab, removeDatabaseExplorerState],
   );
 
   function selectTab(index: number) {
@@ -110,26 +117,26 @@ export default function BoardsPage() {
 
   const duplicateTab = useCallback(
     (value: string) => {
-      const id = genID();
-      const tab = tabs.find((tab) => tab.value === value);
-      if (sessionStorage.getItem(value)) {
-        sessionStorage.setItem(id, sessionStorage.getItem(value) || "");
-      }
+      const tab = tabs.find((candidate) => candidate.value === value);
+      if (!tab) return;
 
-      if (tab) {
-        setTabs((prev) => [
-          ...prev,
-          {
-            name: tab.name,
-            value: id,
-            type: tab.type,
-            gameOrigin: tab.gameOrigin,
-          },
-        ]);
-        startTransition(() => setActiveTab(id));
-      }
+      const id = genID();
+      const serializedState = sessionStorage.getItem(value);
+      if (serializedState) sessionStorage.setItem(id, serializedState);
+
+      copyDatabaseExplorerState({ sourceTabId: value, targetTabId: id });
+      setTabs((currentTabs) => [
+        ...currentTabs,
+        {
+          name: tab.name,
+          value: id,
+          type: tab.type,
+          gameOrigin: tab.gameOrigin,
+        },
+      ]);
+      startTransition(() => setActiveTab(id));
     },
-    [tabs, setTabs, setActiveTab],
+    [tabs, copyDatabaseExplorerState, setTabs, setActiveTab],
   );
 
   useEffect(() => {

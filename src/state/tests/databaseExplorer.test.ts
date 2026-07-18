@@ -14,7 +14,9 @@ import {
     currentLichessOptionsAtom,
     currentLocalOptionsAtom,
     currentMasterOptionsAtom,
+    copyDatabaseExplorerStateAtom,
     initializeDatabaseExplorerStateAtom,
+    removeDatabaseExplorerStateAtom,
     setCurrentLocalDatabaseAtom,
     syncCurrentLocalFenAtom,
 } from "@/state/databaseExplorer";
@@ -236,5 +238,108 @@ describe("database explorer tab state", () => {
             color: "black",
         });
         expect(store.get(currentMasterOptionsAtom)).toEqual({ since });
+    });
+
+    it("copies an initialized explorer into an independently mutable duplicate", () => {
+        const store = createStore();
+        const lichessSince = new Date("2010-01-01T00:00:00.000Z");
+        const mastersSince = new Date("1990-01-01T00:00:00.000Z");
+        initializeTab(store, "source");
+        selectTab(store, "source");
+        store.set(setCurrentLocalDatabaseAtom, "/db/source.db3");
+        store.set(currentLocalOptionsAtom, (current) => ({ ...current, player: 44 }));
+        store.set(currentDbTypeAtom, "lch_all");
+        store.set(currentDbTabAtom, "games");
+        store.set(currentLichessOptionsAtom, {
+            ratings: [2000, 2200],
+            speeds: ["rapid"],
+            color: "black",
+            since: lichessSince,
+        });
+        store.set(currentMasterOptionsAtom, { since: mastersSince });
+
+        const sourceLichess = store.get(currentLichessOptionsAtom);
+        const sourceMaster = store.get(currentMasterOptionsAtom);
+        store.set(copyDatabaseExplorerStateAtom, {
+            sourceTabId: "source",
+            targetTabId: "duplicate",
+        });
+
+        selectTab(store, "duplicate");
+        const duplicateLichess = store.get(currentLichessOptionsAtom);
+        const duplicateMaster = store.get(currentMasterOptionsAtom);
+        expect(store.get(currentLocalOptionsAtom)).toMatchObject({
+            path: "/db/source.db3",
+            player: 44,
+        });
+        expect(store.get(currentDbTypeAtom)).toBe("lch_all");
+        expect(store.get(currentDbTabAtom)).toBe("games");
+        expect(duplicateLichess).toEqual(sourceLichess);
+        expect(duplicateLichess.ratings).not.toBe(sourceLichess.ratings);
+        expect(duplicateLichess.since).not.toBe(sourceLichess.since);
+        expect(duplicateMaster).toEqual(sourceMaster);
+        expect(duplicateMaster.since).not.toBe(sourceMaster.since);
+
+        store.set(setCurrentLocalDatabaseAtom, "/db/duplicate.db3");
+        store.set(currentDbTypeAtom, "lch_master");
+        store.set(currentDbTabAtom, "options");
+        store.set(currentLichessOptionsAtom, {
+            ratings: [2500],
+            speeds: ["classical"],
+            color: "white",
+        });
+        store.set(currentMasterOptionsAtom, {
+            since: new Date("2000-01-01T00:00:00.000Z"),
+        });
+
+        selectTab(store, "source");
+        expect(store.get(currentLocalOptionsAtom)).toMatchObject({
+            path: "/db/source.db3",
+            player: 44,
+        });
+        expect(store.get(currentDbTypeAtom)).toBe("lch_all");
+        expect(store.get(currentDbTabAtom)).toBe("games");
+        expect(store.get(currentLichessOptionsAtom)).toEqual(sourceLichess);
+        expect(store.get(currentMasterOptionsAtom)).toEqual(sourceMaster);
+    });
+
+    it("leaves a duplicate uninitialized when the source explorer was never opened", () => {
+        const store = createStore();
+        store.set(copyDatabaseExplorerStateAtom, {
+            sourceTabId: "source",
+            targetTabId: "duplicate",
+        });
+        selectTab(store, "duplicate");
+        expect(store.get(currentDatabaseExplorerInitializedAtom)).toBe(false);
+    });
+
+    it("removes closed-tab explorer state", () => {
+        const store = createStore();
+        initializeTab(store, "tab-a");
+        selectTab(store, "tab-a");
+        store.set(setCurrentLocalDatabaseAtom, "/db/stale.db3");
+        store.set(currentDbTypeAtom, "lch_master");
+        store.set(currentDbTabAtom, "options");
+        store.set(currentLichessOptionsAtom, { ratings: [1000], color: "white" });
+        store.set(removeDatabaseExplorerStateAtom, "tab-a");
+
+        store.set(referenceDbAtom, "/db/fresh.db3");
+        store.set(lichessOptionsDefaultsAtom, { ratings: [2500], color: "black" });
+        store.set(masterOptionsDefaultsAtom, {
+            since: new Date("2018-01-01T00:00:00.000Z"),
+        });
+        initializeTab(store, "tab-a");
+
+        expect(store.get(currentLocalOptionsAtom)).toMatchObject({
+            path: "/db/fresh.db3",
+            player: null,
+            type: "exact",
+        });
+        expect(store.get(currentDbTypeAtom)).toBe("local");
+        expect(store.get(currentDbTabAtom)).toBe("stats");
+        expect(store.get(currentLichessOptionsAtom)).toEqual({
+            ratings: [2500],
+            color: "black",
+        });
     });
 });
