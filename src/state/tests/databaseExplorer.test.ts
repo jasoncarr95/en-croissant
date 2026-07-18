@@ -18,6 +18,7 @@ import {
     initializeDatabaseExplorerStateAtom,
     removeDatabaseExplorerStateAtom,
     setCurrentLocalDatabaseAtom,
+    setCurrentLocalPositionTypeAtom,
     syncCurrentLocalFenAtom,
 } from "@/state/databaseExplorer";
 
@@ -170,6 +171,37 @@ describe("database explorer tab state", () => {
         }));
         store.set(syncCurrentLocalFenAtom, "later-board-fen");
         expect(store.get(currentLocalOptionsAtom).fen).toBe("partial-custom-fen");
+    });
+
+    it("uses the current board FEN when returning from a partial query to exact", () => {
+        const store = createStore();
+        initializeTab(store, "tab-a");
+        selectTab(store, "tab-a");
+
+        store.set(currentLocalOptionsAtom, (current) => ({
+            ...current,
+            type: "partial",
+            fen: "partial-custom-fen",
+        }));
+        store.set(syncCurrentLocalFenAtom, "board-after-e4");
+
+        store.set(setCurrentLocalPositionTypeAtom, {
+            type: "partial",
+            boardFen: "different-board-fen",
+        });
+        expect(store.get(currentLocalOptionsAtom)).toMatchObject({
+            type: "partial",
+            fen: "partial-custom-fen",
+        });
+
+        store.set(setCurrentLocalPositionTypeAtom, {
+            type: "exact",
+            boardFen: "board-after-e4",
+        });
+        expect(store.get(currentLocalOptionsAtom)).toMatchObject({
+            type: "exact",
+            fen: "board-after-e4",
+        });
     });
 
     it("queries only an initialized, visible, usable explorer", () => {

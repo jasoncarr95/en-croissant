@@ -139,6 +139,19 @@ export const syncCurrentLocalFenAtom = atom(null, (get, set, fen: string) => {
     }
 });
 
+export const setCurrentLocalPositionTypeAtom = atom(
+    null,
+    (get, set, update: { type: LocalOptions["type"]; boardFen: string }) => {
+        const optionsAtom = localOptionsFamily(requireActiveTabId(get));
+        const current = get(optionsAtom);
+        set(optionsAtom, {
+            ...current,
+            type: update.type,
+            fen: update.type === "exact" ? update.boardFen : current.fen,
+        });
+    },
+);
+
 function removeDatabaseExplorerState(tabId: string) {
     localOptionsFamily.remove(tabId);
     lichessOptionsFamily.remove(tabId);
