@@ -279,7 +279,7 @@ function DatabasePanel() {
         >
           <ScrollArea flex={1} offsetScrollbars pt="sm">
             {match(db)
-              .with("local", () => <LocalOptionsPanel boardFen={debouncedFen} />)
+              .with("local", () => <LocalOptionsPanel boardFen={fen} />)
               .with("lch_all", () => <LichessOptionsPanel />)
               .with("lch_master", () => <MasterOptionsPanel />)
               .exhaustive()}
