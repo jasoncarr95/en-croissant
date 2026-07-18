@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import { Chessground } from "@/chessground/Chessground";
 import PiecesGrid from "@/components/boards/PiecesGrid";
 import { PlayerSearchInput } from "@/components/databases/PlayerSearchInput";
-import { currentLocalOptionsAtom } from "@/state/atoms";
+import { currentLocalOptionsAtom } from "@/state/databaseExplorer";
 
 function LocalOptionsPanel({ boardFen }: { boardFen: string }) {
   const { t } = useTranslation();

@@ -30,10 +30,6 @@ import { getWinChance, normalizeScore } from "@/utils/score";
 import { genID, type Tab, tabSchema } from "@/utils/tabs";
 import { getEnginesDir } from "../utils/directories";
 import type { Session } from "../utils/session";
-import {
-    currentDbTabAtom as currentDatabaseExplorerDbTabAtom,
-    type DatabasePanelTab,
-} from "./databaseExplorer";
 import { createAsyncZodStorage, createZodStorage } from "./utils";
 
 const zodArray = <Input, Output>(itemSchema: z.ZodType<Output, z.ZodTypeDef, Input>) => {
@@ -399,18 +395,6 @@ export const masterOptionsDefaultsAtom = atomWithStorage<MasterGamesOptions>(
     createZodStorage(masterOptionsSchema, localStorage),
     {
         getOnInit: true,
-    },
-);
-
-export const lichessOptionsAtom = lichessOptionsDefaultsAtom;
-export const masterOptionsAtom = masterOptionsDefaultsAtom;
-export { currentDbTypeAtom, currentLocalOptionsAtom } from "./databaseExplorer";
-export const currentDbTabAtom = atom(
-    (get) => get(currentDatabaseExplorerDbTabAtom),
-    (get, set, update: string | ((current: string) => string)) => {
-        const current = get(currentDatabaseExplorerDbTabAtom);
-        const next = typeof update === "function" ? update(current) : update;
-        set(currentDatabaseExplorerDbTabAtom, next as DatabasePanelTab);
     },
 );
 

@@ -13,6 +13,21 @@ import {
 export type DatabaseSource = "local" | "lch_all" | "lch_master";
 export type DatabasePanelTab = "stats" | "games" | "options";
 
+export function canQueryDatabaseExplorer(input: {
+    initialized: boolean;
+    panel: DatabasePanelTab;
+    source: DatabaseSource;
+    localPath: string | null;
+    missingExplorerToken: boolean;
+}): boolean {
+    return (
+        input.initialized &&
+        input.panel !== "options" &&
+        !input.missingExplorerToken &&
+        (input.source !== "local" || Boolean(input.localPath))
+    );
+}
+
 const defaultLocalOptions: LocalOptions = {
     path: null,
     type: "exact",

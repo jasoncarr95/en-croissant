@@ -7,6 +7,8 @@ import {
     referenceDbAtom,
 } from "@/state/atoms";
 import {
+    canQueryDatabaseExplorer,
+    currentDatabaseExplorerInitializedAtom,
     currentDbTabAtom,
     currentDbTypeAtom,
     currentLichessOptionsAtom,
@@ -166,5 +168,73 @@ describe("database explorer tab state", () => {
         }));
         store.set(syncCurrentLocalFenAtom, "later-board-fen");
         expect(store.get(currentLocalOptionsAtom).fen).toBe("partial-custom-fen");
+    });
+
+    it("queries only an initialized, visible, usable explorer", () => {
+        expect(
+            canQueryDatabaseExplorer({
+                initialized: false,
+                panel: "stats",
+                source: "local",
+                localPath: "/db/a.db3",
+                missingExplorerToken: false,
+            }),
+        ).toBe(false);
+        expect(
+            canQueryDatabaseExplorer({
+                initialized: true,
+                panel: "options",
+                source: "local",
+                localPath: "/db/a.db3",
+                missingExplorerToken: false,
+            }),
+        ).toBe(false);
+        expect(
+            canQueryDatabaseExplorer({
+                initialized: true,
+                panel: "stats",
+                source: "local",
+                localPath: null,
+                missingExplorerToken: false,
+            }),
+        ).toBe(false);
+        expect(
+            canQueryDatabaseExplorer({
+                initialized: true,
+                panel: "games",
+                source: "lch_all",
+                localPath: null,
+                missingExplorerToken: true,
+            }),
+        ).toBe(false);
+        expect(
+            canQueryDatabaseExplorer({
+                initialized: true,
+                panel: "games",
+                source: "lch_master",
+                localPath: null,
+                missingExplorerToken: false,
+            }),
+        ).toBe(true);
+    });
+
+    it("marks initialization only after every default is copied", () => {
+        const store = createStore();
+        const since = new Date("2012-01-01T00:00:00.000Z");
+        selectTab(store, "tab-a");
+        store.set(referenceDbAtom, "/db/default.db3");
+        store.set(lichessOptionsDefaultsAtom, { ratings: [1800], color: "black" });
+        store.set(masterOptionsDefaultsAtom, { since });
+
+        expect(store.get(currentDatabaseExplorerInitializedAtom)).toBe(false);
+        initializeTab(store, "tab-a");
+
+        expect(store.get(currentDatabaseExplorerInitializedAtom)).toBe(true);
+        expect(store.get(currentLocalOptionsAtom).path).toBe("/db/default.db3");
+        expect(store.get(currentLichessOptionsAtom)).toEqual({
+            ratings: [1800],
+            color: "black",
+        });
+        expect(store.get(currentMasterOptionsAtom)).toEqual({ since });
     });
 });
