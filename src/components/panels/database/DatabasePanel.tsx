@@ -10,25 +10,29 @@ import {
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { Link } from "@tanstack/react-router";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { memo, useContext, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import useSWR from "swr/immutable";
 import { match } from "ts-pattern";
 import { useStore } from "zustand";
-import { commands } from "@/bindings";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
+import { currentTabAtom, sessionsAtom } from "@/state/atoms";
 import {
+  canQueryDatabaseExplorer,
+  type DatabasePanelTab,
+  type DatabaseSource,
+  currentDatabaseExplorerInitializedAtom,
   currentDbTabAtom,
   currentDbTypeAtom,
+  currentLichessOptionsAtom,
   currentLocalOptionsAtom,
-  currentTabAtom,
-  lichessOptionsAtom,
-  masterOptionsAtom,
-  referenceDbAtom,
-  sessionsAtom,
-} from "@/state/atoms";
-import { getDatabases, type Opening, searchPosition } from "@/utils/db";
+  currentMasterOptionsAtom,
+  initializeDatabaseExplorerStateAtom,
+  setCurrentLocalDatabaseAtom,
+  syncCurrentLocalFenAtom,
+} from "@/state/databaseExplorer";
+import { getDatabases, type LocalOptions, type Opening, searchPosition } from "@/utils/db";
 import { formatNumber } from "@/utils/format";
 import { convertToNormalized, getLichessGames, getMasterGames } from "@/utils/lichess/api";
 import type { LichessGamesOptions, MasterGamesOptions } from "@/utils/lichess/explorer";
@@ -54,17 +58,6 @@ type DBType =
       fen: string;
       token: string;
     };
-
-export type LocalOptions = {
-  path: string | null;
-  fen: string;
-  type: "exact" | "partial";
-  player: number | null;
-  color: "white" | "black";
-  start_date?: string;
-  end_date?: string;
-  result: "any" | "whitewon" | "draw" | "blackwon";
-};
 
 function sortOpenings(openings: Opening[]) {
   return openings.sort((a, b) => b.black + b.draw + b.white - (a.black + a.draw + a.white));
@@ -110,15 +103,24 @@ async function fetchOpening(db: DBType, tab: string) {
 function DatabasePanel() {
   const { t } = useTranslation();
 
-  const store = useContext(TreeStateContext)!;
-  const fen = useStore(store, (s) => s.currentNode().fen);
-  const [referenceDatabase, setReferenceDatabase] = useAtom(referenceDbAtom);
-  const sessions = useAtomValue(sessionsAtom);
+  const treeStore = useContext(TreeStateContext)!;
+  const fen = useStore(treeStore, (state) => state.currentNode().fen);
   const [debouncedFen] = useDebouncedValue(fen, 50);
-  const [lichessOptions, setLichessOptions] = useAtom(lichessOptionsAtom);
-  const [masterOptions, setMasterOptions] = useAtom(masterOptionsAtom);
-  const [localOptions, setLocalOptions] = useAtom(currentLocalOptionsAtom);
+  const sessions = useAtomValue(sessionsAtom);
+  const tab = useAtomValue(currentTabAtom);
+  const tabId = tab?.value ?? null;
+
+  const initialized = useAtomValue(currentDatabaseExplorerInitializedAtom);
+  const lichessOptions = useAtomValue(currentLichessOptionsAtom);
+  const masterOptions = useAtomValue(currentMasterOptionsAtom);
+  const localOptions = useAtomValue(currentLocalOptionsAtom);
   const [db, setDb] = useAtom(currentDbTypeAtom);
+  const [tabType, setTabType] = useAtom(currentDbTabAtom);
+
+  const initializeExplorer = useSetAtom(initializeDatabaseExplorerStateAtom);
+  const setLocalDatabase = useSetAtom(setCurrentLocalDatabaseAtom);
+  const syncLocalFen = useSetAtom(syncCurrentLocalFenAtom);
+
   const explorerToken = sessions.find((session) => session.lichess?.accessToken)?.lichess
     ?.accessToken;
   const missingExplorerToken = db !== "local" && !explorerToken;
@@ -126,20 +128,19 @@ function DatabasePanel() {
   const { data: databases } = useSWR(db === "local" ? "databases" : null, () => getDatabases());
 
   const dbSelectData = (databases ?? [])
-    .filter((d) => d.type === "success")
-    .map((d) => ({ value: d.file, label: d.title || d.filename }));
+    .filter((database) => database.type === "success")
+    .map((database) => ({
+      value: database.file,
+      label: database.title || database.filename,
+    }));
 
   useEffect(() => {
-    if (db === "local") {
-      setLocalOptions((q) => ({ ...q, fen: debouncedFen }));
-    }
-  }, [debouncedFen, setLocalOptions, setMasterOptions, setLichessOptions, db]);
+    if (tabId && !initialized) initializeExplorer(tabId);
+  }, [tabId, initialized, initializeExplorer]);
 
   useEffect(() => {
-    if (db === "local") {
-      setLocalOptions((q) => ({ ...q, path: referenceDatabase }));
-    }
-  }, [referenceDatabase, setLocalOptions, db]);
+    if (db === "local") syncLocalFen(debouncedFen);
+  }, [db, debouncedFen, syncLocalFen]);
 
   const dbType: DBType = match(db)
     .with("local", (v) => ({
@@ -160,19 +161,21 @@ function DatabasePanel() {
     }))
     .exhaustive();
 
-  const tab = useAtomValue(currentTabAtom);
-  const [tabType, setTabType] = useAtom(currentDbTabAtom);
+  const canQuery = canQueryDatabaseExplorer({
+    initialized,
+    panel: tabType,
+    source: db,
+    localPath: localOptions.path,
+    missingExplorerToken,
+  });
 
   const {
     data: openingData,
     isLoading,
     error,
-  } = useSWR(
-    tabType !== "options" && !missingExplorerToken ? dbType : null,
-    async (dbType: DBType) => {
-      return fetchOpening(dbType, tab?.value || "");
-    },
-  );
+  } = useSWR(canQuery ? dbType : null, async (currentDbType: DBType) => {
+    return fetchOpening(currentDbType, tabId ?? "");
+  });
 
   const grandTotal = openingData?.openings?.reduce(
     (acc, curr) => acc + curr.black + curr.white + curr.draw,
@@ -196,12 +199,9 @@ function DatabasePanel() {
           {db === "local" && (
             <Select
               data={dbSelectData}
-              value={referenceDatabase}
-              onChange={async (value) => {
-                await commands.clearGames();
-                setReferenceDatabase(value);
-              }}
-              placeholder={t("Board.Database.SelectReference")}
+              value={localOptions.path}
+              onChange={setLocalDatabase}
+              placeholder={t("Board.Database.SelectDatabase")}
               size="sm"
               flex={1}
               maw={200}
@@ -229,7 +229,7 @@ function DatabasePanel() {
         orientation="vertical"
         placement="right"
         value={tabType}
-        onChange={(v) => setTabType(v!)}
+        onChange={(v) => setTabType(v as DatabasePanelTab)}
         display="flex"
         flex={1}
         style={{ overflow: "hidden" }}
@@ -251,6 +251,7 @@ function DatabasePanel() {
           type={db}
           header={header}
           missingExplorerToken={missingExplorerToken}
+          missingLocalDatabase={dbType.type === "local" && !dbType.options.path}
         >
           <OpeningsTable openings={openingData?.openings || []} loading={isLoading} />
         </PanelWithError>
@@ -260,6 +261,7 @@ function DatabasePanel() {
           type={db}
           header={header}
           missingExplorerToken={missingExplorerToken}
+          missingLocalDatabase={dbType.type === "local" && !dbType.options.path}
         >
           <GamesTable
             games={openingData?.games || []}
@@ -273,10 +275,11 @@ function DatabasePanel() {
           type={db}
           header={header}
           missingExplorerToken={missingExplorerToken}
+          missingLocalDatabase={dbType.type === "local" && !dbType.options.path}
         >
           <ScrollArea flex={1} offsetScrollbars pt="sm">
             {match(db)
-              .with("local", () => <LocalOptionsPanel boardFen={debouncedFen} />)
+              .with("local", () => <LocalOptionsPanel boardFen={fen} />)
               .with("lch_all", () => <LichessOptionsPanel />)
               .with("lch_master", () => <MasterOptionsPanel />)
               .exhaustive()}
@@ -289,28 +292,27 @@ function DatabasePanel() {
 
 function PanelWithError(props: {
   value: string;
-  error: string;
-  type: string;
+  error: unknown;
+  type: DatabaseSource;
   header: React.ReactNode;
   children: React.ReactNode;
   missingExplorerToken: boolean;
+  missingLocalDatabase: boolean;
 }) {
-  const referenceDatabase = useAtomValue(referenceDbAtom);
   const { t } = useTranslation();
   let children = props.children;
-  if (props.type === "local" && !referenceDatabase) {
+
+  if (props.missingLocalDatabase) {
     children = <NoDatabaseWarning />;
-  }
-  if (props.missingExplorerToken && props.type !== "local") {
+  } else if (props.missingExplorerToken && props.type !== "local") {
     children = (
       <Alert color="yellow">
         {t("Board.Database.ExplorerAuthRequired1")} <Link to="/accounts">Users</Link>{" "}
         {t("Board.Database.ExplorerAuthRequired2")}
       </Alert>
     );
-  }
-  if (props.error && props.type !== "local") {
-    children = <Alert color="red">{props.error.toString()}</Alert>;
+  } else if (props.error) {
+    children = <Alert color="red">{String(props.error)}</Alert>;
   }
 
   return (

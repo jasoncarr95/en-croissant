@@ -1906,27 +1906,7 @@ pub async fn preload_reference_db(
     file: PathBuf,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), Error> {
-    let index_path = get_index_path(&file);
-
-    if !MmapSearchIndex::is_valid(&index_path) {
-        info!("Search index not found for reference database, generating...");
-        generate_search_index(&file, &state)?;
-    }
-
-    let mut cache = state.db_cache.lock().unwrap();
-    if cache.is_none() {
-        info!("Preloading reference database from {:?}", index_path);
-        match MmapSearchIndex::open(&index_path) {
-            Ok(index) => {
-                info!("Preloaded reference database with {} games", index.len());
-                *cache = Some(index);
-            }
-            Err(e) => {
-                return Err(Error::from(e));
-            }
-        }
-    }
-
+    search::get_or_load_search_index(&file, &state)?;
     Ok(())
 }
 

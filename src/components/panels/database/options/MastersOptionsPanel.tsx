@@ -2,12 +2,12 @@ import { Group } from "@mantine/core";
 import { YearPickerInput } from "@mantine/dates";
 import { useAtom } from "jotai";
 import { useTranslation } from "react-i18next";
-import { masterOptionsAtom } from "@/state/atoms";
+import { currentMasterOptionsAtom } from "@/state/databaseExplorer";
 import { MIN_DATE } from "@/utils/lichess/api";
 
 const MasterOptionsPanel = () => {
   const { t } = useTranslation();
-  const [options, setOptions] = useAtom(masterOptionsAtom);
+  const [options, setOptions] = useAtom(currentMasterOptionsAtom);
   return (
     <Group grow>
       <YearPickerInput

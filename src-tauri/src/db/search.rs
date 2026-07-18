@@ -10,7 +10,7 @@ use specta::Type;
 use std::{
     cmp::Reverse,
     collections::BinaryHeap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
@@ -225,6 +225,53 @@ fn get_move_after_match(
     Ok(None)
 }
 
+fn get_or_open_search_index(
+    cache: &Mutex<Option<(PathBuf, MmapSearchIndex)>>,
+    index_path: &Path,
+) -> std::io::Result<MmapSearchIndex> {
+    let mut cache = cache.lock().unwrap();
+
+    if let Some((cached_path, index)) = cache.as_ref() {
+        if cached_path == index_path {
+            return Ok(index.clone());
+        }
+    }
+
+    let start = Instant::now();
+    info!("Loading games from mmap binary search index");
+    let index = MmapSearchIndex::open(index_path)?;
+    info!(
+        "Opened mmap index with {} games: {:?}",
+        index.len(),
+        start.elapsed()
+    );
+    *cache = Some((index_path.to_path_buf(), index.clone()));
+    Ok(index)
+}
+
+fn clear_search_index_cache(cache: &Mutex<Option<(PathBuf, MmapSearchIndex)>>) {
+    *cache.lock().unwrap() = None;
+}
+
+pub(super) fn get_or_load_search_index(
+    file: &Path,
+    state: &tauri::State<'_, AppState>,
+) -> Result<MmapSearchIndex, Error> {
+    let index_path = get_index_path(file);
+
+    if !MmapSearchIndex::is_valid(&index_path) {
+        info!("Search index not found, generating automatically...");
+        clear_search_index_cache(&state.db_cache);
+        super::generate_search_index(file, state).map_err(|error| {
+            Error::from(std::io::Error::other(format!(
+                "Failed to generate search index: {error}"
+            )))
+        })?;
+    }
+
+    get_or_open_search_index(&state.db_cache, &index_path).map_err(Error::from)
+}
+
 #[derive(Clone, serde::Serialize)]
 pub struct ProgressPayload {
     pub progress: f64,
@@ -262,40 +309,7 @@ pub async fn search_position(
 
     let permit = state.new_request.acquire().await.unwrap();
 
-    let mmap_index = {
-        let mut cache = state.db_cache.lock().unwrap();
-        if cache.is_none() {
-            let index_path = get_index_path(&file);
-
-            if !MmapSearchIndex::is_valid(&index_path) {
-                info!("Search index not found, generating automatically...");
-                drop(cache);
-                if let Err(e) = super::generate_search_index(&file, &state) {
-                    return Err(Error::from(std::io::Error::other(format!(
-                        "Failed to generate search index: {}",
-                        e
-                    ))));
-                }
-                cache = state.db_cache.lock().unwrap();
-            }
-
-            info!("Loading games from mmap binary search index");
-            match MmapSearchIndex::open(&index_path) {
-                Ok(index) => {
-                    info!(
-                        "Opened mmap index with {} games: {:?}",
-                        index.len(),
-                        start.elapsed()
-                    );
-                    *cache = Some(index);
-                }
-                Err(e) => {
-                    return Err(Error::from(e));
-                }
-            }
-        }
-        cache.as_ref().unwrap().clone()
-    };
+    let mmap_index = get_or_load_search_index(&file, &state)?;
 
     let game_count = mmap_index.len();
 
@@ -491,40 +505,7 @@ pub async fn is_position_in_db(
 
     let permit = state.new_request.acquire().await.unwrap();
 
-    let mmap_index = {
-        let mut cache = state.db_cache.lock().unwrap();
-        if cache.is_none() {
-            let index_path = get_index_path(&file);
-
-            if !MmapSearchIndex::is_valid(&index_path) {
-                info!("Search index not found, generating automatically...");
-                drop(cache);
-                if let Err(e) = super::generate_search_index(&file, &state) {
-                    return Err(Error::from(std::io::Error::other(format!(
-                        "Failed to generate search index: {}",
-                        e
-                    ))));
-                }
-                cache = state.db_cache.lock().unwrap();
-            }
-
-            info!("Loading games from mmap binary search index");
-            match MmapSearchIndex::open(&index_path) {
-                Ok(index) => {
-                    info!(
-                        "Opened mmap index with {} games: {:?}",
-                        index.len(),
-                        start.elapsed()
-                    );
-                    *cache = Some(index);
-                }
-                Err(e) => {
-                    return Err(Error::from(e));
-                }
-            }
-        }
-        cache.as_ref().unwrap().clone()
-    };
+    let mmap_index = get_or_load_search_index(&file, &state)?;
 
     let check_entry = |entry: SearchGameEntryRef<'_>| -> bool {
         let end_material: MaterialCount = ByColor {
@@ -561,6 +542,69 @@ pub async fn is_position_in_db(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::search_index::{SearchGameEntry, SearchIndex};
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    fn write_test_index(path: &Path, ids: &[i32]) {
+        let entries = ids
+            .iter()
+            .map(|id| SearchGameEntry {
+                id: *id,
+                white_id: 1,
+                black_id: 2,
+                date: None,
+                result: GameResult::Draw,
+                pawn_home: 0,
+                white_material: 0,
+                black_material: 0,
+                white_elo: 0,
+                black_elo: 0,
+                fen: None,
+                moves: vec![],
+            })
+            .collect();
+        SearchIndex { entries }.write_to(path).unwrap();
+    }
+
+    #[test]
+    fn mmap_cache_reloads_when_the_index_path_changes() {
+        let dir = tempdir().unwrap();
+        let a_path = dir.path().join("a.ecsi");
+        let b_path = dir.path().join("b.ecsi");
+        write_test_index(&a_path, &[1]);
+        write_test_index(&b_path, &[2, 3]);
+
+        let cache = Mutex::new(None);
+        let a = get_or_open_search_index(&cache, &a_path).unwrap();
+        let b = get_or_open_search_index(&cache, &b_path).unwrap();
+        let a_again = get_or_open_search_index(&cache, &a_path).unwrap();
+
+        assert_eq!(a.len(), 1);
+        assert_eq!(b.len(), 2);
+        assert_eq!(a_again.len(), 1);
+        assert_eq!(a.get_entry_ref(0).unwrap().id, 1);
+        let cached_path = cache.lock().unwrap().as_ref().unwrap().0.clone();
+        assert_eq!(cached_path, a_path);
+    }
+
+    #[test]
+    fn mmap_cache_reloads_when_an_index_is_regenerated_at_the_same_path() {
+        let dir = tempdir().unwrap();
+        let index_path = dir.path().join("index.ecsi");
+        write_test_index(&index_path, &[1]);
+
+        let cache = Mutex::new(None);
+        let before_regeneration = get_or_open_search_index(&cache, &index_path).unwrap();
+
+        clear_search_index_cache(&cache);
+        drop(before_regeneration);
+        write_test_index(&index_path, &[2, 3]);
+        let after_regeneration = get_or_open_search_index(&cache, &index_path).unwrap();
+
+        assert_eq!(after_regeneration.len(), 2);
+        assert_eq!(after_regeneration.get_entry_ref(0).unwrap().id, 2);
+    }
 
     fn assert_partial_match(fen1: &str, fen2: &str) {
         let query = PositionQuery::partial_from_fen(fen1).unwrap();

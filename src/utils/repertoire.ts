@@ -1,4 +1,4 @@
-import type { LocalOptions } from "@/components/panels/database/DatabasePanel";
+import type { LocalOptions } from "@/utils/db";
 import { searchPosition } from "./db";
 import { getNodeAtPath, type TreeNode, treeIterator } from "./treeReducer";
 import { TreeStoreState } from "@/state/store/tree";

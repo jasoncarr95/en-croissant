@@ -14,7 +14,7 @@ import { match } from "ts-pattern";
 import ToggleButtonGroup, {
   type ToggleButtonGroupOption,
 } from "@/components/common/ToggleButtonGroup";
-import { lichessOptionsAtom } from "@/state/atoms";
+import { currentLichessOptionsAtom } from "@/state/databaseExplorer";
 import { capitalize } from "@/utils/format";
 import { MIN_DATE } from "@/utils/lichess/api";
 import type { LichessGameSpeed, LichessRating } from "@/utils/lichess/explorer";
@@ -22,7 +22,7 @@ import type { LichessGameSpeed, LichessRating } from "@/utils/lichess/explorer";
 const LichessOptionsPanel = () => {
   const { t } = useTranslation();
 
-  const [options, setOptions] = useAtom(lichessOptionsAtom);
+  const [options, setOptions] = useAtom(currentLichessOptionsAtom);
 
   const timeControls: LichessGameSpeed[] = [
     "ultraBullet",

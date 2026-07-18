@@ -12,18 +12,19 @@ import { DateInput } from "@mantine/dates";
 import { type Piece, parseSquare } from "chessops";
 import { EMPTY_BOARD_FEN, makeFen, parseFen } from "chessops/fen";
 import dayjs from "dayjs";
-import { useAtom } from "jotai";
+import { useAtom, useSetAtom } from "jotai";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Chessground } from "@/chessground/Chessground";
 import PiecesGrid from "@/components/boards/PiecesGrid";
 import { PlayerSearchInput } from "@/components/databases/PlayerSearchInput";
-import { currentLocalOptionsAtom } from "@/state/atoms";
+import { currentLocalOptionsAtom, setCurrentLocalPositionTypeAtom } from "@/state/databaseExplorer";
 
 function LocalOptionsPanel({ boardFen }: { boardFen: string }) {
   const { t } = useTranslation();
   const boardRef = useRef(null);
   const [options, setOptions] = useAtom(currentLocalOptionsAtom);
+  const setPositionType = useSetAtom(setCurrentLocalPositionTypeAtom);
 
   const setSimilarStructure = async (fen: string) => {
     const setup = parseFen(fen).unwrap();
@@ -141,7 +142,12 @@ function LocalOptionsPanel({ boardFen }: { boardFen: string }) {
             { value: "partial", label: t("Board.Database.Local.Partial") },
           ]}
           value={options.type}
-          onChange={(v) => setOptions({ ...options, type: v as "exact" | "partial" })}
+          onChange={(v) =>
+            setPositionType({
+              type: v as "exact" | "partial",
+              boardFen,
+            })
+          }
         />
       </Stack>
 
