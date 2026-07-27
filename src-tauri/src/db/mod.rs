@@ -44,7 +44,7 @@ use std::{
     io::{BufWriter, Write},
     str::FromStr,
 };
-use tauri::{Emitter, State};
+use tauri::Emitter;
 
 use log::info;
 use tauri_specta::Event as _;
@@ -146,7 +146,7 @@ impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error>
 }
 
 fn get_db_or_create(
-    state: &State<AppState>,
+    state: &AppState,
     db_path: &str,
     options: ConnectionOptions,
 ) -> Result<
@@ -158,6 +158,7 @@ fn get_db_or_create(
         None => {
             let pool = Pool::builder()
                 .max_size(16)
+                .min_idle(Some(0))
                 .connection_customizer(Box::new(options))
                 .build(ConnectionManager::<SqliteConnection>::new(db_path))?;
             state
@@ -1914,6 +1915,30 @@ pub async fn preload_reference_db(
 mod tests {
     use super::*;
     use pgn_reader::BufferedReader;
+
+    #[test]
+    fn database_pool_opens_connections_on_demand() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("lazy-pool.db3");
+        let state = AppState::default();
+
+        drop(
+            get_db_or_create(
+                &state,
+                db_path.to_str().unwrap(),
+                ConnectionOptions::default(),
+            )
+            .unwrap(),
+        );
+
+        let pool = state
+            .connection_pool
+            .get(db_path.to_str().unwrap())
+            .unwrap();
+        let pool_state = pool.state();
+        assert_eq!(pool_state.connections, 1);
+        assert_eq!(pool_state.idle_connections, 1);
+    }
 
     #[test]
     fn home_row() {
