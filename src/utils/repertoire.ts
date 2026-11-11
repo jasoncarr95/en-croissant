@@ -88,8 +88,10 @@ export async function computeTreeCoverage(
 
         const pathKey = path.join(",");
 
-        // If we've already computed (or are computing) this FEN, reuse the result
-        if (fenCoverageCache.has(node.fen)) {
+        // A leaf that transposes into an already computed position takes its coverage. A node with
+        // moves below it is walked again so those moves get their own entries; its searches are
+        // already in dbMovesCache.
+        if (node.children.length === 0 && fenCoverageCache.has(node.fen)) {
             const cachedCoverage = await fenCoverageCache.get(node.fen)!;
             coverageMap.set(pathKey, cachedCoverage);
             // Reuse cached db results instead of re-searching
@@ -102,7 +104,9 @@ export async function computeTreeCoverage(
         }
 
         const promise = computeNode(node, path);
-        fenCoverageCache.set(node.fen, promise);
+        if (node.children.length > 0 && !fenCoverageCache.has(node.fen)) {
+            fenCoverageCache.set(node.fen, promise);
+        }
         return promise;
     }
 
