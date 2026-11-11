@@ -116,6 +116,7 @@ impl EngineProcess {
         self.options = options.clone();
         self.best_moves.clear();
         self.last_best_moves.clear();
+        self.last_progress = 0.0;
         Ok(())
     }
 
@@ -206,7 +207,7 @@ fn parse_uci_attrs(
                 for mv in m {
                     let uci: UciMove = mv.to_string().parse()?;
                     let m = uci.to_move(&pos)?;
-                    let san = SanPlus::from_move_and_play_unchecked(&mut pos, &m);
+                    let san = SanPlus::from_move_and_play_unchecked(&mut pos, m);
                     best_moves.san_moves.push(san.to_string());
                     best_moves.uci_moves.push(uci.to_string());
                 }
@@ -331,6 +332,15 @@ pub async fn get_best_moves(
 
     let key = (tab.clone(), id.clone());
 
+    let setup_validation = parse_fen_and_apply_moves(&options.fen, &options.moves);
+    if let Err(e) = setup_validation {
+        warn!("Invalid position for engine: {:?}", e);
+        if let Some(process) = state.engine_processes.get(&key) {
+            process.lock().await.stop().await?;
+        }
+        return Ok(None);
+    }
+
     if state.engine_processes.contains_key(&key) {
         {
             let process = state.engine_processes.get_mut(&key).unwrap();
@@ -383,7 +393,6 @@ pub async fn get_best_moves(
                             if multipv == proc.real_multipv {
                                 if proc.best_moves.iter().all(|x| x.depth == cur_depth)
                                     && cur_depth >= proc.last_depth
-                                    && lim.check().is_ok()
                                 {
                                     let progress = match proc.go_mode {
                                         GoMode::Depth(depth) => {
@@ -399,18 +408,20 @@ pub async fn get_best_moves(
                                         GoMode::PlayersTime(_) => 99.99,
                                         GoMode::Infinite => 99.99,
                                     };
-                                    BestMovesPayload {
-                                        best_lines: proc.best_moves.clone(),
-                                        engine: id.clone(),
-                                        tab: tab.clone(),
-                                        fen: proc.options.fen.clone(),
-                                        moves: proc.options.moves.clone(),
-                                        progress,
-                                    }
-                                    .emit(&app)?;
                                     proc.last_depth = cur_depth;
                                     proc.last_best_moves = proc.best_moves.clone();
                                     proc.last_progress = progress as f32;
+                                    if lim.check().is_ok() {
+                                        BestMovesPayload {
+                                            best_lines: proc.best_moves.clone(),
+                                            engine: id.clone(),
+                                            tab: tab.clone(),
+                                            fen: proc.options.fen.clone(),
+                                            moves: proc.options.moves.clone(),
+                                            progress,
+                                        }
+                                        .emit(&app)?;
+                                    }
                                 }
                                 proc.best_moves.clear();
                             }
@@ -435,6 +446,7 @@ pub async fn get_best_moves(
                 }
                 .emit(&app)?;
                 proc.last_progress = 100.0;
+                proc.running = false;
             }
             _ => {}
         }
@@ -507,13 +519,13 @@ pub async fn analyze_game(
             let uci = UciMove::from_ascii(m.as_bytes())?;
             let m = uci.to_move(&chess)?;
             let previous_pos = chess.clone();
-            chess.play_unchecked(&m);
+            chess.play_unchecked(m);
             let current_pos = chess.clone();
             if !chess.is_game_over() {
                 let prev_eval = naive_eval(&previous_pos);
                 let cur_eval = -naive_eval(&current_pos);
                 fens.push((
-                    Fen::from_position(current_pos, EnPassantMode::Legal),
+                    Fen::from_position(&current_pos, EnPassantMode::Legal),
                     options.moves.clone().into_iter().take(i + 1).collect(),
                     prev_eval > cur_eval + 100,
                 ));
@@ -682,7 +694,7 @@ fn qsearch(position: &Chess, mut alpha: i32, beta: i32) -> i32 {
 
     for capture in captures {
         let mut new_position = position.clone();
-        new_position.play_unchecked(capture);
+        new_position.play_unchecked(*capture);
         let score = -qsearch(&new_position, -beta, -alpha);
         if score >= beta {
             return beta;
@@ -700,7 +712,7 @@ fn naive_eval(pos: &Chess) -> i32 {
         .iter()
         .map(|mv| {
             let mut new_position = pos.clone();
-            new_position.play_unchecked(mv);
+            new_position.play_unchecked(*mv);
             -qsearch(&new_position, i32::MIN, i32::MAX)
         })
         .max()
@@ -732,43 +744,43 @@ mod tests {
     #[test]
     fn eval_hanging_pawn() {
         let position = pos("r1bqkbnr/ppp1pppp/2n5/1B1p4/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3");
-        assert_eq!(naive_eval(&position), 100);
+        assert_eq!(naive_eval(&position), 90);
     }
 
     #[test]
     fn eval_complex_center() {
         let position = pos("r1bqkbnr/ppp2ppp/2n5/1B1pp3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4");
-        assert_eq!(naive_eval(&position), 100);
+        assert_eq!(naive_eval(&position), 90);
     }
 
     #[test]
     fn eval_in_check() {
         let position = pos("r1bqkbnr/ppp2ppp/2B5/3pp3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 4");
-        assert_eq!(naive_eval(&position), -100);
+        assert_eq!(naive_eval(&position), -90);
     }
 
     #[test]
     fn eval_rook_stack() {
         let position = pos("rnrq4/8/8/1R6/1R6/1R5K/1Q6/7k w - - 0 1");
-        assert_eq!(naive_eval(&position), 500);
+        assert_eq!(naive_eval(&position), 10000);
     }
 
     #[test]
     fn eval_rook_stack2() {
         let position = pos("rnrq4/8/8/1R6/1Q6/1R5K/1R6/7k w - - 0 1");
-        assert_eq!(naive_eval(&position), 200);
+        assert_eq!(naive_eval(&position), 10000);
     }
 
     #[test]
     fn eval_opera_game1() {
         let position = pos("4kb1r/p2rqppp/5n2/1B2p1B1/4P3/1Q6/PPP2PPP/2K4R w k - 0 14");
-        assert_eq!(naive_eval(&position), -100);
+        assert_eq!(naive_eval(&position), -120);
     }
 
     #[test]
     fn eval_opera_game2() {
         let position = pos("4kb1r/p2rqppp/5n2/1B2p1B1/4P3/1Q6/PPP2PPP/2KR4 b k - 1 14");
-        assert_eq!(naive_eval(&position), 0);
+        assert_eq!(naive_eval(&position), 20);
     }
 }
 

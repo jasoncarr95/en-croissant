@@ -1,4 +1,3 @@
-import type { LocalOptions } from "@/utils/db";
 import { searchPosition } from "./db";
 import { getNodeAtPath, type TreeNode, treeIterator } from "./treeReducer";
 import { TreeStoreState } from "@/state/store/tree";
@@ -48,32 +47,26 @@ export async function computeTreeCoverage(
         }
 
         const promise = (async () => {
-            if (signal?.aborted) {
-                throw new DOMException("Aborted", "AbortError");
-            }
-
+            signal?.throwIfAborted();
             try {
                 const [openings] = await searchPosition(
                     {
                         path: dbPath,
-                        type: "exact",
-                        fen,
-                        color: "white",
-                        player: null,
-                        result: "any",
-                    } as LocalOptions,
+                        position: { fen, type_: "exact" },
+                    },
                     "coverage-calc",
                 );
+                signal?.throwIfAborted();
 
                 const summary = openings.find((op) => op.move === "*");
                 const moves = openings
                     .filter((op) => op.move !== "*")
                     .map((op) => ({
                         move: op.move,
-                        games: op.white + op.draw + op.black,
+                        games: op.total,
                     }));
 
-                const gamesEndingHere = summary ? summary.white + summary.draw + summary.black : 0;
+                const gamesEndingHere = summary?.total ?? 0;
 
                 const gamesContinuing = moves.reduce((acc, m) => acc + m.games, 0);
 
@@ -81,6 +74,7 @@ export async function computeTreeCoverage(
 
                 return { moves, total };
             } catch {
+                signal?.throwIfAborted();
                 return { moves: [], total: 0 };
             }
         })();
@@ -90,9 +84,7 @@ export async function computeTreeCoverage(
     }
 
     async function compute(node: TreeNode, path: number[]): Promise<number> {
-        if (signal?.aborted) {
-            throw new DOMException("Aborted", "AbortError");
-        }
+        signal?.throwIfAborted();
 
         const pathKey = path.join(",");
 
