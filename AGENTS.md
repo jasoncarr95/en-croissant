@@ -23,7 +23,7 @@ pnpm dev          # Start full Tauri dev server (Rust + React, hot reload)
 pnpm start-vite   # Start frontend only (port 1420, no Rust)
 pnpm build        # Full production build
 pnpm test         # Run Vitest tests
-pnpm lint         # Type check (tsgo) + oxlint
+pnpm lint         # Type check (tsc) + oxlint
 pnpm lint:fix     # Auto-fix linting issues
 pnpm format       # Format with oxfmt
 ```
