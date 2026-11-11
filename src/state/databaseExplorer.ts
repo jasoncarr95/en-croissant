@@ -141,6 +141,24 @@ export const setCurrentLocalDatabaseAtom = atom(null, (get, set, path: string | 
     set(optionsAtom, { ...current, path, player1: null, player2: null, tournament: null });
 });
 
+// A database was deleted: no tab may keep searching it, since opening a missing path creates an
+// empty database file. A tab left without one takes the reference database when it has one.
+export const forgetLocalDatabaseAtom = atom(null, (get, set, path: string) => {
+    for (const tabId of localOptionsFamily.getParams()) {
+        const optionsAtom = localOptionsFamily(tabId);
+        const current = get(optionsAtom);
+        if (current.path === path) {
+            set(optionsAtom, {
+                ...current,
+                path: null,
+                player1: null,
+                player2: null,
+                tournament: null,
+            });
+        }
+    }
+});
+
 // The explorer in an analysis tab always searches the exact position on the board.
 export const syncCurrentLocalFenAtom = atom(null, (get, set, fen: string) => {
     const optionsAtom = localOptionsFamily(requireActiveTabId(get));

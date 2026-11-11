@@ -4,6 +4,7 @@ import {
     activeTabAtom,
     lichessOptionsDefaultsAtom,
     masterOptionsDefaultsAtom,
+    storedReferenceDbAtom,
 } from "@/state/atoms";
 import {
     adoptReferenceDatabaseAtom,
@@ -16,6 +17,7 @@ import {
     currentLocalOptionsAtom,
     currentMasterOptionsAtom,
     copyDatabaseExplorerStateAtom,
+    forgetLocalDatabaseAtom,
     initializeDatabaseExplorerStateAtom,
     removeDatabaseExplorerStateAtom,
     setCurrentLocalDatabaseAtom,
@@ -78,6 +80,8 @@ describe("database explorer tab state", () => {
             ...current,
             until: mastersUntil,
         }));
+
+        expect(store.get(storedReferenceDbAtom)).toBeNull();
 
         selectTab(store, "tab-b");
         expect(store.get(currentLocalOptionsAtom)).toEqual({ path: "/db/reference.duckdb" });
@@ -203,6 +207,46 @@ describe("database explorer tab state", () => {
         expect(store.get(currentLocalOptionsAtom)).toMatchObject({
             path: "/db/b.duckdb",
             player1: "Player B",
+        });
+    });
+
+    it("drops a deleted database from every tab that searched it", () => {
+        const store = createStore();
+        initializeTab(store, "tab-a");
+        initializeTab(store, "tab-b");
+        initializeTab(store, "tab-c");
+        adoptReference(store, "tab-a", "/db/deleted.duckdb");
+        adoptReference(store, "tab-b", "/db/deleted.duckdb");
+        adoptReference(store, "tab-c", "/db/kept.duckdb");
+        selectTab(store, "tab-a");
+        store.set(currentLocalOptionsAtom, (current) => ({
+            ...current,
+            player1: "Player A",
+            outcome: "1-0",
+        }));
+        selectTab(store, "tab-c");
+        store.set(currentLocalOptionsAtom, (current) => ({ ...current, player1: "Player C" }));
+
+        store.set(forgetLocalDatabaseAtom, "/db/deleted.duckdb");
+
+        selectTab(store, "tab-a");
+        expect(store.get(currentLocalOptionsAtom)).toEqual({
+            path: null,
+            player1: null,
+            player2: null,
+            tournament: null,
+            outcome: "1-0",
+        });
+        store.set(adoptReferenceDatabaseAtom, "/db/reference.duckdb");
+        expect(store.get(currentLocalOptionsAtom).path).toBe("/db/reference.duckdb");
+
+        selectTab(store, "tab-b");
+        expect(store.get(currentLocalOptionsAtom).path).toBeNull();
+
+        selectTab(store, "tab-c");
+        expect(store.get(currentLocalOptionsAtom)).toEqual({
+            path: "/db/kept.duckdb",
+            player1: "Player C",
         });
     });
 

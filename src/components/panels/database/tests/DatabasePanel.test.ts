@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import openingsPanelSource from "@/components/home/PersonalCardPanels/OpeningsPanel.tsx?raw";
 import databasePanelSource from "../DatabasePanel.tsx?raw";
 
 describe("DatabasePanel local position controls", () => {
@@ -12,5 +13,10 @@ describe("DatabasePanel local position controls", () => {
 
     it("never writes the global reference database", () => {
         expect(databasePanelSource).not.toContain("storedReferenceDbAtom");
+    });
+
+    it("opens a player's openings on that tab's own database", () => {
+        expect(openingsPanelSource).not.toContain("storedReferenceDbAtom");
+        expect(openingsPanelSource).toContain("path: source?.file ?? prev.path");
     });
 });

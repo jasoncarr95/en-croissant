@@ -29,7 +29,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { basename } from "@tauri-apps/api/path";
 import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
 import { exists } from "@tauri-apps/plugin-fs";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import useSWR, { useSWRConfig } from "swr";
@@ -41,6 +41,7 @@ import {
   storedReferenceDbAtom,
   tabsAtom,
 } from "@/state/atoms";
+import { forgetLocalDatabaseAtom } from "@/state/databaseExplorer";
 import { useActiveDatabaseViewStore } from "@/state/store/database";
 import { getDatabases, type SuccessDatabaseInfo } from "@/utils/db";
 import { formatBytes, formatNumber } from "@/utils/format";
@@ -60,6 +61,7 @@ export default function DatabasesPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [referenceDatabase, setReferenceDatabase] = useAtom(storedReferenceDbAtom);
+  const forgetLocalDatabase = useSetAtom(forgetLocalDatabaseAtom);
   const [conversionState, setConversionState] = useAtom(databaseConversionStateAtom);
   const selectedDatabase = useMemo(
     () => (databases ?? []).find((db) => db.file === selected) ?? null,
@@ -119,6 +121,7 @@ export default function DatabasesPage() {
           commands.deleteDatabase(selectedDatabase.file).then((result) => {
             if (result.status !== "ok") return;
             setReferenceDatabase((current) => (current === selectedDatabase.file ? null : current));
+            forgetLocalDatabase(selectedDatabase.file);
             mutate();
             setSelected(null);
           });
