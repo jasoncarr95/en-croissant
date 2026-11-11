@@ -10,8 +10,6 @@
       "Bash(git -C /Users/jasoncarr/projects/RANDOM/chess/en-croissant add src/utils/repertoire.ts src/components/panels/practice/RepertoireInfo.tsx)",
       "Bash(pnpm test:*)"
     ],
-    "additionalDirectories": [
-      "/Users/jasoncarr/projects/RANDOM/chess/encroisssant-site/docs"
-    ]
+    "additionalDirectories": ["/Users/jasoncarr/projects/RANDOM/chess/encroisssant-site/docs"]
   }
 }
