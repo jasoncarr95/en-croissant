@@ -195,15 +195,27 @@ export async function computeTreeCoverage(
         if (!coverageMap.has(path.join(",")) && dbMovesCache.has(node.fen)) {
             await compute(node, path);
         }
-        for (let i = 0; i < node.children.length; i++) {
+        // Same rule as the main walk: every opponent move, but only your main reply.
+        const isOpponentTurn = node.halfMoves % 2 !== userParity;
+        const followed = isOpponentTurn ? node.children.length : Math.min(node.children.length, 1);
+        for (let i = 0; i < followed; i++) {
             await computeTransposedPaths(node.children[i], [...path, i]);
         }
     }
 
     const startNode = getNodeAtPath(root, startPath);
     await compute(startNode, startPath);
-    await computeTransposedPaths(startNode, startPath);
-    return { coverageMap, gamesMap, missingGamesMap };
+    // The gap buttons follow the main walk only: a gap reached through a rare move order is the
+    // same gap as on the common order, and filling it there would not change the coverage.
+    const mainGamesMap = new Map(gamesMap);
+    // A sweep can search new positions, which makes paths it already passed eligible, so repeat
+    // until nothing new is searched. That keeps the result independent of the order of the lines.
+    let searchedBefore: number;
+    do {
+        searchedBefore = dbMovesCache.size;
+        await computeTransposedPaths(startNode, startPath);
+    } while (dbMovesCache.size > searchedBefore);
+    return { coverageMap, gamesMap: mainGamesMap, missingGamesMap };
 }
 
 export function findNextGap(

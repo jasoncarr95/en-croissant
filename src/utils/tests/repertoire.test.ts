@@ -5,7 +5,7 @@ import type { TreeNode } from "@/utils/treeReducer";
 const searchPosition = vi.hoisted(() => vi.fn());
 vi.mock("@/utils/db", () => ({ searchPosition }));
 
-import { computeTreeCoverage } from "@/utils/repertoire";
+import { computeTreeCoverage, findBiggestGap, findNextGap } from "@/utils/repertoire";
 
 const node = (
     fen: string,
@@ -127,10 +127,19 @@ describe("computeTreeCoverage", () => {
         for (const key of [rare, `${rare},0`]) {
             const twin = key.replace(rare, common);
             expect(coverageMap.get(key)).toBeCloseTo(coverageMap.get(twin)!);
-            expect(gamesMap.get(key)).toBe(gamesMap.get(twin));
             expect(missingGamesMap.get(key)).toBe(missingGamesMap.get(twin));
         }
         expect(coverageMap.get(`${rare},0`)).toBeCloseTo(0.2);
+
+        // The gap buttons keep to the common move order: no game counts under the rare one.
+        expect(gamesMap.has(rare)).toBe(false);
+        expect(gamesMap.has(`${rare},0`)).toBe(false);
+        const tree = transposingRepertoire();
+        expect(findNextGap(tree, [], "white", coverageMap, gamesMap, 10)).toEqual([
+            0, 0, 0, 0, 0, 0, 0,
+        ]);
+        const biggest = findBiggestGap(tree, "white", coverageMap, gamesMap, missingGamesMap, 10);
+        expect(biggest?.join(",").startsWith("0,0,0,1")).toBe(false);
 
         // The rare moves themselves lead nowhere common until then: no search, no coverage.
         const searched: string[] = searchPosition.mock.calls.map(
