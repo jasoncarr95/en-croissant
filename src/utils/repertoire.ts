@@ -185,8 +185,24 @@ export async function computeTreeCoverage(
         return childCoverage;
     }
 
+    // compute() only follows opponent moves that have enough games. A position reached by a rarely
+    // played move order is therefore never visited on that path, even when a common move order
+    // reaches the same position, and its moves would read as 0% covered. Walk those paths too.
+    // Only positions that were already searched are picked up, so a rare line that leads nowhere
+    // common stays unsearched.
+    async function computeTransposedPaths(node: TreeNode, path: number[]): Promise<void> {
+        signal?.throwIfAborted();
+        if (!coverageMap.has(path.join(",")) && dbMovesCache.has(node.fen)) {
+            await compute(node, path);
+        }
+        for (let i = 0; i < node.children.length; i++) {
+            await computeTransposedPaths(node.children[i], [...path, i]);
+        }
+    }
+
     const startNode = getNodeAtPath(root, startPath);
     await compute(startNode, startPath);
+    await computeTransposedPaths(startNode, startPath);
     return { coverageMap, gamesMap, missingGamesMap };
 }
 

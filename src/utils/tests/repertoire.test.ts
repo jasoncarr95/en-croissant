@@ -105,6 +105,44 @@ describe("computeTreeCoverage", () => {
         expect(new Set(searched).size).toBe(searched.length);
     });
 
+    it("reads a position the same when it is reached by a rarely played move order", async () => {
+        // 2...c6 is played in too few games to be followed, yet 3...e6 lands in a position the
+        // 2...e6 move order already covers.
+        searchPosition.mockImplementation(async (options: { position: { fen: string } }) => [
+            options.position.fen === "after-c4"
+                ? [stats("e6", 60), stats("c6", 5)]
+                : (database[options.position.fen] ?? [stats("any", 100)]),
+            [],
+        ]);
+
+        const { coverageMap, gamesMap, missingGamesMap } = await computeTreeCoverage(
+            transposingRepertoire(),
+            "white",
+            "/db/reference.duckdb",
+            10,
+        );
+
+        const common = "0,0,0,0,0,0";
+        const rare = "0,0,0,1,0,0";
+        for (const key of [rare, `${rare},0`]) {
+            const twin = key.replace(rare, common);
+            expect(coverageMap.get(key)).toBeCloseTo(coverageMap.get(twin)!);
+            expect(gamesMap.get(key)).toBe(gamesMap.get(twin));
+            expect(missingGamesMap.get(key)).toBe(missingGamesMap.get(twin));
+        }
+        expect(coverageMap.get(`${rare},0`)).toBeCloseTo(0.2);
+
+        // The rare moves themselves lead nowhere common until then: no search, no coverage.
+        const searched: string[] = searchPosition.mock.calls.map(
+            ([options]) => options.position.fen,
+        );
+        expect(searched).not.toContain("after-c6");
+        expect(searched).not.toContain("c6-Nc3");
+        expect(coverageMap.has("0,0,0,1")).toBe(false);
+        expect(coverageMap.has("0,0,0,1,0")).toBe(false);
+        expect(new Set(searched).size).toBe(searched.length);
+    });
+
     it("stops when aborted", async () => {
         const controller = new AbortController();
         controller.abort();
