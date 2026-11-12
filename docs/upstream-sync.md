@@ -39,6 +39,7 @@ Traps met the first time:
 - An installable app: `pnpm tauri build --bundles app --config '{"bundle":{"createUpdaterArtifacts":false}}'`. The `--config` part skips updater signing, which needs upstream's private key. The app lands in `src-tauri/target/release/bundle/macos/`.
 - Installing: quit the app, move `/Applications/en-croissant.app` aside as a backup (`~/Documents/EnCroissant-backups/` holds the earlier ones), then `ditto` the built bundle to `/Applications/en-croissant.app`. A locally built app is ad-hoc signed and opens without a Gatekeeper prompt.
 - Dev and release builds share the app identifier `org.encroissant.app`, so both use the real data folder. A dev build keeps its own settings (its pages load from `localhost`); a release build opens the installed app's settings.
+- Testing by hand writes to real files: a move played in a tab that is backed by a file (a repertoire, a saved game) is saved into that file. Test on a copy, or compare with `~/Documents/EnCroissant-backups/` afterwards.
 - The app's updater points at upstream's update server. Accepting an in-app update replaces the fork build with the official one; sync through a PR instead.
 
 ## Databases after v0.16.0
