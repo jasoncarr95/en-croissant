@@ -11,14 +11,15 @@ import {
 import { useDebouncedValue } from "@mantine/hooks";
 import { Link } from "@tanstack/react-router";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { memo, useContext, useEffect } from "react";
+import { memo, useContext, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import useSWR from "swr/immutable";
 import { match } from "ts-pattern";
 import { useStore } from "zustand";
 import { TreeStateContext } from "@/components/common/TreeStateContext";
-import { currentTabAtom, sessionsAtom } from "@/state/atoms";
+import { currentTabAtom, referenceDbAtom, sessionsAtom } from "@/state/atoms";
 import {
+  adoptReferenceDatabaseAtom,
   canQueryDatabaseExplorer,
   type DatabasePanelTab,
   type DatabaseSource,
@@ -32,7 +33,13 @@ import {
   setCurrentLocalDatabaseAtom,
   syncCurrentLocalFenAtom,
 } from "@/state/databaseExplorer";
-import { getDatabases, type LocalOptions, type Opening, searchPosition } from "@/utils/db";
+import {
+  getDatabases,
+  type LocalOptions,
+  type Opening,
+  query_games,
+  searchPosition,
+} from "@/utils/db";
 import { formatNumber } from "@/utils/format";
 import { convertToNormalized, getLichessGames, getMasterGames } from "@/utils/lichess/api";
 import type { LichessGamesOptions, MasterGamesOptions } from "@/utils/lichess/explorer";
@@ -60,7 +67,7 @@ type DBType =
     };
 
 function sortOpenings(openings: Opening[]) {
-  return openings.sort((a, b) => b.black + b.draw + b.white - (a.black + a.draw + a.white));
+  return openings.sort((a, b) => b.total - a.total);
 }
 
 async function fetchOpening(db: DBType, tab: string) {
@@ -70,6 +77,7 @@ async function fetchOpening(db: DBType, tab: string) {
       return {
         openings: data.moves.map((move) => ({
           move: move.san,
+          total: move.white + move.black + move.draws,
           white: move.white,
           black: move.black,
           draw: move.draws,
@@ -82,6 +90,7 @@ async function fetchOpening(db: DBType, tab: string) {
       return {
         openings: data.moves.map((move) => ({
           move: move.san,
+          total: move.white + move.black + move.draws,
           white: move.white,
           black: move.black,
           draw: move.draws,
@@ -107,6 +116,7 @@ function DatabasePanel() {
   const fen = useStore(treeStore, (state) => state.currentNode().fen);
   const [debouncedFen] = useDebouncedValue(fen, 50);
   const sessions = useAtomValue(sessionsAtom);
+  const referenceDatabase = useAtomValue(referenceDbAtom);
   const tab = useAtomValue(currentTabAtom);
   const tabId = tab?.value ?? null;
 
@@ -118,6 +128,7 @@ function DatabasePanel() {
   const [tabType, setTabType] = useAtom(currentDbTabAtom);
 
   const initializeExplorer = useSetAtom(initializeDatabaseExplorerStateAtom);
+  const adoptReferenceDatabase = useSetAtom(adoptReferenceDatabaseAtom);
   const setLocalDatabase = useSetAtom(setCurrentLocalDatabaseAtom);
   const syncLocalFen = useSetAtom(syncCurrentLocalFenAtom);
 
@@ -137,6 +148,10 @@ function DatabasePanel() {
   useEffect(() => {
     if (tabId && !initialized) initializeExplorer(tabId);
   }, [tabId, initialized, initializeExplorer]);
+
+  useEffect(() => {
+    if (tabId && !localOptions.path) adoptReferenceDatabase(referenceDatabase);
+  }, [tabId, localOptions.path, referenceDatabase, adoptReferenceDatabase]);
 
   useEffect(() => {
     if (db === "local") syncLocalFen(debouncedFen);
@@ -168,19 +183,39 @@ function DatabasePanel() {
     localPath: localOptions.path,
     missingExplorerToken,
   });
+  const hasLocalPosition = Boolean(localOptions.position?.fen);
+
+  const [gamesPagination, setGamesPagination] = useState({ key: "", page: 1 });
+  const localGamesKey = JSON.stringify(localOptions);
+  const gamesPage = gamesPagination.key === localGamesKey ? gamesPagination.page : 1;
+  const {
+    data: localGames,
+    isLoading: gamesLoading,
+    error: gamesError,
+  } = useSWR(
+    canQuery && db === "local" && tabType === "games" && hasLocalPosition
+      ? (["position-games", localOptions, gamesPage] as const)
+      : null,
+    ([, options, page]) =>
+      query_games(options.path!, {
+        ...options,
+        sides: options.sides ?? "WhiteBlack",
+        options: { page, pageSize: 20, skipCount: false, sort: "averageElo", direction: "desc" },
+      }),
+  );
 
   const {
     data: openingData,
     isLoading,
     error,
-  } = useSWR(canQuery ? dbType : null, async (currentDbType: DBType) => {
-    return fetchOpening(currentDbType, tabId ?? "");
-  });
-
-  const grandTotal = openingData?.openings?.reduce(
-    (acc, curr) => acc + curr.black + curr.white + curr.draw,
-    0,
+  } = useSWR(
+    canQuery && (db !== "local" || (tabType === "stats" && hasLocalPosition)) ? dbType : null,
+    async (currentDbType: DBType) => {
+      return fetchOpening(currentDbType, tabId ?? "");
+    },
   );
+
+  const grandTotal = openingData?.openings?.reduce((acc, curr) => acc + curr.total, 0);
 
   const header = (
     <>
@@ -213,12 +248,16 @@ function DatabasePanel() {
         {tabType !== "options" && (
           <Text style={{ whiteSpace: "nowrap" }}>
             {t("Board.Database.Matches", {
-              matches: formatNumber(Math.max(grandTotal || 0, openingData?.games.length || 0)),
+              matches: formatNumber(
+                db === "local" && tabType === "games"
+                  ? (localGames?.count ?? 0)
+                  : Math.max(grandTotal || 0, openingData?.games.length || 0),
+              ),
             })}
           </Text>
         )}
       </Group>
-      <DatabaseLoader isLoading={isLoading} tab={tab?.value ?? null} />
+      <DatabaseLoader isLoading={isLoading || gamesLoading} tab={tab?.value ?? null} />
     </>
   );
 
@@ -235,12 +274,7 @@ function DatabasePanel() {
         style={{ overflow: "hidden" }}
       >
         <Tabs.List>
-          <Tabs.Tab
-            value="stats"
-            disabled={dbType.type === "local" && dbType.options.type === "partial"}
-          >
-            {t("Board.Database.Stats")}
-          </Tabs.Tab>
+          <Tabs.Tab value="stats">{t("Board.Database.Stats")}</Tabs.Tab>
           <Tabs.Tab value="games">{t("Board.Database.Games")}</Tabs.Tab>
           <Tabs.Tab value="options">{t("Board.Database.Options")}</Tabs.Tab>
         </Tabs.List>
@@ -253,20 +287,29 @@ function DatabasePanel() {
           missingExplorerToken={missingExplorerToken}
           missingLocalDatabase={dbType.type === "local" && !dbType.options.path}
         >
-          <OpeningsTable openings={openingData?.openings || []} loading={isLoading} />
+          <OpeningsTable openings={openingData?.openings || []} loading={isLoading} fen={fen} />
         </PanelWithError>
         <PanelWithError
           value="games"
-          error={error}
+          error={db === "local" ? gamesError : error}
           type={db}
           header={header}
           missingExplorerToken={missingExplorerToken}
           missingLocalDatabase={dbType.type === "local" && !dbType.options.path}
         >
           <GamesTable
-            games={openingData?.games || []}
-            loading={isLoading}
+            games={db === "local" ? localGames?.data || [] : openingData?.games || []}
+            loading={db === "local" ? gamesLoading : isLoading}
             databasePath={dbType.type === "local" ? dbType.options.path : null}
+            pagination={
+              db === "local"
+                ? {
+                    page: gamesPage,
+                    totalRecords: localGames?.count ?? 0,
+                    onPageChange: (page) => setGamesPagination({ key: localGamesKey, page }),
+                  }
+                : undefined
+            }
           />
         </PanelWithError>
         <PanelWithError
@@ -279,7 +322,10 @@ function DatabasePanel() {
         >
           <ScrollArea flex={1} offsetScrollbars pt="sm">
             {match(db)
-              .with("local", () => <LocalOptionsPanel boardFen={fen} />)
+              .with(
+                "local",
+                () => localOptions.path && <LocalOptionsPanel file={localOptions.path} />,
+              )
               .with("lch_all", () => <LichessOptionsPanel />)
               .with("lch_master", () => <MasterOptionsPanel />)
               .exhaustive()}

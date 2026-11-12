@@ -19,6 +19,7 @@
   ```
 
   Expected on 2026-07-18: PR #795 is open and draft. If it has merged and removed the mmap cache, stop and rewrite Task 1 for the merged database layer; do not reintroduce the old cache.
+
 - Preserve `referenceDbAtom` as the global default used by reports, repertoire features, and startup preload. The database selector inside an analysis tab must never write it.
 - Preserve storage keys `lichess-all-options` and `lichess-master-options` so existing preferences migrate without user action.
 - Do not persist per-tab working copies across application restarts. Restored tabs use the latest persisted defaults when the Database panel first mounts.
@@ -560,18 +561,11 @@
     return tabId;
   }
 
-  function resolveUpdate<Value>(
-    update: SetStateAction<Value>,
-    current: Value,
-  ): Value {
-    return typeof update === "function"
-      ? (update as (value: Value) => Value)(current)
-      : update;
+  function resolveUpdate<Value>(update: SetStateAction<Value>, current: Value): Value {
+    return typeof update === "function" ? (update as (value: Value) => Value)(current) : update;
   }
 
-  function currentFamilyValue<Value>(
-    family: AtomFamily<string, PrimitiveAtom<Value>>,
-  ) {
+  function currentFamilyValue<Value>(family: AtomFamily<string, PrimitiveAtom<Value>>) {
     return atom(
       (get) => get(family(requireActiveTabId(get))),
       (get, set, update: SetStateAction<Value>) => {
@@ -606,37 +600,25 @@
     },
   );
 
-  export const initializeDatabaseExplorerStateAtom = atom(
-    null,
-    (get, set, tabId: string) => {
-      if (get(initializedFamily(tabId))) return;
+  export const initializeDatabaseExplorerStateAtom = atom(null, (get, set, tabId: string) => {
+    if (get(initializedFamily(tabId))) return;
 
-      const local = get(localOptionsFamily(tabId));
-      set(localOptionsFamily(tabId), {
-        ...local,
-        path: local.path ?? get(referenceDbAtom),
-      });
-      set(
-        lichessOptionsFamily(tabId),
-        cloneLichessOptions(get(lichessOptionsDefaultsAtom)),
-      );
-      set(
-        masterOptionsFamily(tabId),
-        cloneMasterOptions(get(masterOptionsDefaultsAtom)),
-      );
-      set(initializedFamily(tabId), true);
-    },
-  );
+    const local = get(localOptionsFamily(tabId));
+    set(localOptionsFamily(tabId), {
+      ...local,
+      path: local.path ?? get(referenceDbAtom),
+    });
+    set(lichessOptionsFamily(tabId), cloneLichessOptions(get(lichessOptionsDefaultsAtom)));
+    set(masterOptionsFamily(tabId), cloneMasterOptions(get(masterOptionsDefaultsAtom)));
+    set(initializedFamily(tabId), true);
+  });
 
-  export const setCurrentLocalDatabaseAtom = atom(
-    null,
-    (get, set, path: string | null) => {
-      const optionsAtom = localOptionsFamily(requireActiveTabId(get));
-      const current = get(optionsAtom);
-      if (current.path === path) return;
-      set(optionsAtom, { ...current, path, player: null });
-    },
-  );
+  export const setCurrentLocalDatabaseAtom = atom(null, (get, set, path: string | null) => {
+    const optionsAtom = localOptionsFamily(requireActiveTabId(get));
+    const current = get(optionsAtom);
+    if (current.path === path) return;
+    set(optionsAtom, { ...current, path, player: null });
+  });
 
   export const syncCurrentLocalFenAtom = atom(null, (get, set, fen: string) => {
     const optionsAtom = localOptionsFamily(requireActiveTabId(get));
@@ -845,9 +827,7 @@
     ?.accessToken;
   const missingExplorerToken = db !== "local" && !explorerToken;
 
-  const { data: databases } = useSWR(db === "local" ? "databases" : null, () =>
-    getDatabases(),
-  );
+  const { data: databases } = useSWR(db === "local" ? "databases" : null, () => getDatabases());
 
   const dbSelectData = (databases ?? [])
     .filter((database) => database.type === "success")
@@ -1213,12 +1193,9 @@
     initializedFamily.remove(tabId);
   }
 
-  export const removeDatabaseExplorerStateAtom = atom(
-    null,
-    (_get, _set, tabId: string) => {
-      removeDatabaseExplorerState(tabId);
-    },
-  );
+  export const removeDatabaseExplorerStateAtom = atom(null, (_get, _set, tabId: string) => {
+    removeDatabaseExplorerState(tabId);
+  });
 
   export const copyDatabaseExplorerStateAtom = atom(
     null,
@@ -1226,10 +1203,7 @@
       removeDatabaseExplorerState(ids.targetTabId);
       if (!get(initializedFamily(ids.sourceTabId))) return;
 
-      set(
-        localOptionsFamily(ids.targetTabId),
-        { ...get(localOptionsFamily(ids.sourceTabId)) },
-      );
+      set(localOptionsFamily(ids.targetTabId), { ...get(localOptionsFamily(ids.sourceTabId)) });
       set(
         lichessOptionsFamily(ids.targetTabId),
         cloneLichessOptions(get(lichessOptionsFamily(ids.sourceTabId))),
@@ -1324,14 +1298,7 @@
         await commands.abortGame(`${value}-game`);
       }
     },
-    [
-      tabs,
-      activeTab,
-      setTabs,
-      toggleSaveModal,
-      setActiveTab,
-      removeDatabaseExplorerState,
-    ],
+    [tabs, activeTab, setTabs, toggleSaveModal, setActiveTab, removeDatabaseExplorerState],
   );
   ```
 

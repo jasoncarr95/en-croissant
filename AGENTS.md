@@ -23,7 +23,7 @@ pnpm dev          # Start full Tauri dev server (Rust + React, hot reload)
 pnpm start-vite   # Start frontend only (port 1420, no Rust)
 pnpm build        # Full production build
 pnpm test         # Run Vitest tests
-pnpm lint         # Type check (tsgo) + oxlint
+pnpm lint         # Type check (tsc) + oxlint
 pnpm lint:fix     # Auto-fix linting issues
 pnpm format       # Format with oxfmt
 ```
@@ -59,7 +59,7 @@ Key frontend directories:
 ### Backend (`/src-tauri/src`)
 
 - **Runtime**: Tauri 2 + Tokio async
-- **Database**: SQLite via Diesel ORM; position search uses an in-memory mmap index (`db/search_index.rs`)
+- **Database**: DuckDB (`duckdb-rs`, one r2d2 pool per `.duckdb` file) since upstream v0.16.0; older SQLite `.db3` files are only read to convert them (`db/legacy.rs`)
 - **Chess engines**: UCI protocol via vampirc-uci custom fork; engine process management in `engine/`
 - **Type generation**: tauri-specta auto-generates `src/bindings/` from Rust command signatures — run after changing Tauri commands
 

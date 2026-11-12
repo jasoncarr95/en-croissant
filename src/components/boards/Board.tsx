@@ -1,5 +1,6 @@
 import type { DrawBrushes, DrawShape } from "@lichess-org/chessground/draw";
 import { ActionIcon, Box, Center, Group, Text, useMantineTheme } from "@mantine/core";
+import { useElementSize } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconChevronRight } from "@tabler/icons-react";
 import {
@@ -14,7 +15,7 @@ import {
 import { chessgroundDests, chessgroundMove } from "chessops/compat";
 import { makeFen, parseFen } from "chessops/fen";
 import { makeSan } from "chessops/san";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { memo, useCallback, useContext, useMemo, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useTranslation } from "react-i18next";
@@ -32,6 +33,7 @@ import {
   enableBoardScrollAtom,
   eraseDrawablesOnClickAtom,
   forcedEnPassantAtom,
+  is3dAtom,
   materialDisplayAtom,
   moveHighlightAtom,
   moveInputAtom,
@@ -48,7 +50,7 @@ import {
 import { keyMapAtom } from "@/state/keybinds";
 import classes from "@/styles/Chessboard.module.css";
 import { ANNOTATION_INFO, isBasicAnnotation } from "@/utils/annotation";
-import { getVariationLine } from "@/utils/chess";
+import { getMoveDestination, getVariationLine } from "@/utils/chess";
 import { chessopsError, forceEnPassant, positionFromFen } from "@/utils/chessops";
 import { getTabFile, getTabGameNumber } from "@/utils/tabs";
 import ShowMaterial from "../common/ShowMaterial";
@@ -98,6 +100,8 @@ function Board({
   enablePremoves = false,
 }: ChessboardProps) {
   const { t } = useTranslation();
+
+  const is3d = useAtomValue(is3dAtom);
 
   const store = useContext(TreeStateContext)!;
 
@@ -170,7 +174,7 @@ function Board({
     }),
   );
 
-  const setPracticeState = useSetAtom(practiceStateAtom);
+  const [practiceState, setPracticeState] = useAtom(practiceStateAtom);
   const [sessionStats, setSessionStats] = useAtom(practiceSessionStatsAtom);
   const cardStartTime = useAtomValue(practiceCardStartTimeAtom);
 
@@ -291,7 +295,7 @@ function Board({
   }
 
   // Variation arrows: show all children moves when there are alternatives
-  if (showVariationArrows && currentNode.children.length > 1) {
+  if (showVariationArrows && !practicing && currentNode.children.length > 1) {
     for (const child of currentNode.children) {
       if (child.move) {
         const m = child.move as NormalMove;
@@ -311,13 +315,14 @@ function Board({
     }
   }
 
-  if (currentNode.shapes.length > 0) {
+  const awaitingMove = practicing && practiceState.phase === "waiting";
+  if (!awaitingMove && currentNode.shapes.length > 0) {
     shapes = shapes.concat(currentNode.shapes);
   }
 
   const hasClock =
-    !!whiteTime ||
-    !!blackTime ||
+    whiteTime !== undefined ||
+    blackTime !== undefined ||
     !!headers.time_control ||
     !!headers.white_time_control ||
     !!headers.black_time_control;
@@ -364,10 +369,7 @@ function Board({
 
   useHotkeys(keyMap.TOGGLE_EVAL_BAR.keys, () => setEvalOpen((e) => !e));
 
-  const square = match(currentNode)
-    .with({ san: "O-O" }, ({ halfMoves }) => parseSquare(halfMoves % 2 === 1 ? "g1" : "g8"))
-    .with({ san: "O-O-O" }, ({ halfMoves }) => parseSquare(halfMoves % 2 === 1 ? "c1" : "c8"))
-    .otherwise((node) => node.move?.to);
+  const square = getMoveDestination(currentNode);
 
   const lastMove =
     currentNode.move && square !== undefined
@@ -376,10 +378,11 @@ function Board({
 
   const topPlayer = orientation === "white" ? headers.black : headers.white;
   const bottomPlayer = orientation === "white" ? headers.white : headers.black;
+  const { ref: containerRef, height: containerHeight } = useElementSize();
 
   return (
     <>
-      <Box w="100%" h="100%">
+      <Box w="100%" h="100%" ref={containerRef}>
         <Box
           style={{
             display: "flex",
@@ -389,9 +392,11 @@ function Board({
             gap: "0.5rem",
             flexWrap: "nowrap",
             overflow: "hidden",
+            margin: "0 auto",
             maxWidth:
-              //            topbar   bottompadding                tabs                                  bottomb    topbar   evalbar                                gaps    ???
-              `calc(100vh - 2.25rem - var(--mantine-spacing-sm) - 2.5rem - var(--mantine-spacing-sm) - ${BAR_HEIGHT} - ${BAR_HEIGHT} + 1.563rem + var(--mantine-spacing-md) - 1rem  - 0.2rem)`,
+              containerHeight > 0
+                ? `calc(${containerHeight}px - 2 * ${BAR_HEIGHT} - 1rem + 25px + var(--mantine-spacing-sm))`
+                : undefined,
           }}
         >
           <BoardBar
@@ -424,6 +429,8 @@ function Board({
             style={{
               position: "relative",
               flexWrap: "nowrap",
+              flex: 1,
+              minHeight: 0,
             }}
             gap="sm"
           >
@@ -472,7 +479,7 @@ function Board({
                     }
                   : undefined
               }
-              className={classes.chessboard}
+              className={`${classes.chessboard} ${is3d ? "is3d" : ""}`}
               ref={boardRef}
               onClick={() => {
                 eraseDrawablesOnClick && clearShapes();

@@ -11,6 +11,7 @@ use specta::Type;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+use flate2::read::GzDecoder;
 use futures_util::StreamExt;
 
 use crate::error::Error;
@@ -65,13 +66,16 @@ pub async fn download_file(
 
     info!("Downloaded file to {}", path.display());
 
-    if url.ends_with(".zip") {
-        unzip_file(path, file).await?;
-    } else if url.ends_with(".tar") {
-        let mut archive = tar::Archive::new(Cursor::new(file));
-        archive.unpack(path)?;
-    } else {
-        std::fs::write(path, file)?
+    match archive_kind(&url) {
+        Some(ArchiveKind::Zip) => unzip_file(path, file).await?,
+        Some(ArchiveKind::Tar) => {
+            let mut archive = tar::Archive::new(Cursor::new(file));
+            archive.unpack(path)?;
+        }
+        Some(ArchiveKind::TarGz) => {
+            unpack_tar_gz(path, file)?;
+        }
+        None => std::fs::write(path, file)?,
     }
 
     if finalize {
@@ -81,12 +85,40 @@ pub async fn download_file(
     Ok(())
 }
 
+fn unpack_tar_gz(path: &Path, file: Vec<u8>) -> Result<(), Error> {
+    let decoder = GzDecoder::new(Cursor::new(file));
+    let mut archive = tar::Archive::new(decoder);
+    archive.unpack(path)?;
+    Ok(())
+}
+
+#[derive(Debug, PartialEq)]
+enum ArchiveKind {
+    Zip,
+    Tar,
+    TarGz,
+}
+
+fn archive_kind(url: &str) -> Option<ArchiveKind> {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+
+    if path.ends_with(".tar.gz") {
+        Some(ArchiveKind::TarGz)
+    } else if path.ends_with(".zip") {
+        Some(ArchiveKind::Zip)
+    } else if path.ends_with(".tar") {
+        Some(ArchiveKind::Tar)
+    } else {
+        None
+    }
+}
+
 pub async fn unzip_file(path: &Path, file: Vec<u8>) -> Result<(), Error> {
     let mut archive = zip::ZipArchive::new(Cursor::new(file))?;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let outpath = path.join(file.mangled_name());
-        if (*file.name()).ends_with('/') {
+        let outpath = path.join(file.mangled_name()?);
+        if file.name()?.ends_with('/') {
             info!(
                 "File {} extracted to \"{}\"",
                 i,

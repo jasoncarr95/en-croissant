@@ -1,7 +1,8 @@
 import { Paper, Portal, Stack, Tabs } from "@mantine/core";
-import { useHotkeys, useToggle } from "@mantine/hooks";
+import { useHotkeys } from "@mantine/hooks";
 import {
   IconDatabase,
+  IconFileText,
   IconInfoCircle,
   IconNotes,
   IconTargetArrow,
@@ -10,7 +11,7 @@ import {
 import { useLoaderData } from "@tanstack/react-router";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import type { Piece } from "chessops";
-import { useAtom, useAtomValue } from "jotai";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
@@ -18,12 +19,15 @@ import {
   allEnabledAtom,
   autoSaveAtom,
   currentAnalysisTabAtom,
+  currentBoardEditingAtom,
   currentPracticeTabAtom,
   currentReportModalOpenAtom,
   currentTabAtom,
   currentTabSelectedAtom,
   enableAllAtom,
+  isCompactLayoutAtom,
   practiceStateAtom,
+  tabsAtom,
 } from "@/state/atoms";
 import { keyMapAtom } from "@/state/keybinds";
 import { defaultPGN } from "@/utils/chess";
@@ -45,9 +49,16 @@ import EvalListener from "./EvalListener";
 function BoardAnalysis() {
   const { t } = useTranslation();
 
-  const [editingMode, toggleEditingMode] = useToggle();
+  const [editingMode, setEditingMode] = useAtom(currentBoardEditingAtom);
+  const toggleEditingMode = useCallback(
+    (value?: boolean) => {
+      setEditingMode((current) => value ?? !current);
+    },
+    [setEditingMode],
+  );
   const [selectedPiece, setSelectedPiece] = useState<Piece | null>(null);
   const [currentTab, setCurrentTab] = useAtom(currentTabAtom);
+  const setTabs = useSetAtom(tabsAtom);
   const tabFile = getTabFile(currentTab);
   const hasPersistentOrigin = currentTab?.gameOrigin.kind !== "none";
   const autoSave = useAtomValue(autoSaveAtom);
@@ -65,20 +76,20 @@ function BoardAnalysis() {
   const saveFile = useCallback(async () => {
     saveToFile({
       dir: documentDir,
-      setCurrentTab,
+      setTabs,
       tab: currentTab,
       store,
     });
-  }, [setCurrentTab, currentTab, documentDir, store]);
+  }, [setTabs, currentTab, documentDir, store]);
   const userSaveFile = useCallback(async () => {
     saveToFile({
       dir: documentDir,
-      setCurrentTab,
+      setTabs,
       tab: currentTab,
       store,
       isUserSave: true,
     });
-  }, [setCurrentTab, currentTab, documentDir, store]);
+  }, [setTabs, currentTab, documentDir, store]);
   useEffect(() => {
     if (hasPersistentOrigin && autoSave && dirty) {
       saveFile();
@@ -169,6 +180,33 @@ function BoardAnalysis() {
     ],
   ]);
 
+  const isCompact = useAtomValue(isCompactLayoutAtom);
+
+  const notationPanel = editingMode ? (
+    <EditingCard
+      boardRef={boardRef}
+      setEditingMode={toggleEditingMode}
+      selectedPiece={selectedPiece}
+      setSelectedPiece={setSelectedPiece}
+    />
+  ) : (
+    <Stack h="100%" gap="xs">
+      <DetachedEval />
+      <GameNotation
+        topBar
+        controls={
+          <BoardControls
+            editingMode={editingMode}
+            toggleEditingMode={toggleEditingMode}
+            dirty={dirty}
+            saveFile={userSaveFile}
+          />
+        }
+      />
+      <MoveControls />
+    </Stack>
+  );
+
   return (
     <>
       <EvalListener />
@@ -192,7 +230,7 @@ function BoardAnalysis() {
             w="100%"
             h="100%"
             value={currentTabSelected}
-            onChange={(v) => setCurrentTabSelected(v || "info")}
+            onChange={(v) => setCurrentTabSelected(v || (isCompact ? "moves" : "info"))}
             keepMounted={false}
             activateTabWithKeyboard={false}
             style={{
@@ -211,6 +249,11 @@ function BoardAnalysis() {
             }}
           >
             <Tabs.List grow>
+              {isCompact && (
+                <Tabs.Tab value="moves" leftSection={<IconFileText size="1rem" />}>
+                  {t("Board.Tabs.Moves")}
+                </Tabs.Tab>
+              )}
               {isRepertoire && (
                 <Tabs.Tab value="practice" leftSection={<IconTargetArrow size="1rem" />}>
                   {t("Board.Tabs.Practice")}
@@ -229,6 +272,11 @@ function BoardAnalysis() {
                 {t("Board.Tabs.Info")}
               </Tabs.Tab>
             </Tabs.List>
+            {isCompact && (
+              <Tabs.Panel value="moves" flex={1} style={{ overflowY: "hidden" }}>
+                {notationPanel}
+              </Tabs.Panel>
+            )}
             {isRepertoire && (
               <Tabs.Panel value="practice" flex={1} style={{ overflowY: "hidden" }}>
                 <PracticePanel />
@@ -249,32 +297,11 @@ function BoardAnalysis() {
           </Tabs>
         </Paper>
       </Portal>
-      <Portal target="#bottomRight" style={{ height: "100%" }}>
-        {editingMode ? (
-          <EditingCard
-            boardRef={boardRef}
-            setEditingMode={toggleEditingMode}
-            selectedPiece={selectedPiece}
-            setSelectedPiece={setSelectedPiece}
-          />
-        ) : (
-          <Stack h="100%" gap="xs">
-            <DetachedEval />
-            <GameNotation
-              topBar
-              controls={
-                <BoardControls
-                  editingMode={editingMode}
-                  toggleEditingMode={toggleEditingMode}
-                  dirty={dirty}
-                  saveFile={userSaveFile}
-                />
-              }
-            />
-            <MoveControls />
-          </Stack>
-        )}
-      </Portal>
+      {!isCompact && (
+        <Portal target="#bottomRight" style={{ height: "100%" }}>
+          {notationPanel}
+        </Portal>
+      )}
     </>
   );
 }

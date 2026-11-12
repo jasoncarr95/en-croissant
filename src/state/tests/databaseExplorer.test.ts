@@ -4,21 +4,23 @@ import {
     activeTabAtom,
     lichessOptionsDefaultsAtom,
     masterOptionsDefaultsAtom,
-    referenceDbAtom,
+    storedReferenceDbAtom,
 } from "@/state/atoms";
 import {
+    adoptReferenceDatabaseAtom,
     canQueryDatabaseExplorer,
     currentDatabaseExplorerInitializedAtom,
     currentDbTabAtom,
     currentDbTypeAtom,
     currentLichessOptionsAtom,
+    currentLocalFiltersAtom,
     currentLocalOptionsAtom,
     currentMasterOptionsAtom,
     copyDatabaseExplorerStateAtom,
+    forgetLocalDatabaseAtom,
     initializeDatabaseExplorerStateAtom,
     removeDatabaseExplorerStateAtom,
     setCurrentLocalDatabaseAtom,
-    setCurrentLocalPositionTypeAtom,
     syncCurrentLocalFenAtom,
 } from "@/state/databaseExplorer";
 
@@ -32,6 +34,12 @@ const initializeTab = (store: TestStore, tabId: string) => {
     store.set(initializeDatabaseExplorerStateAtom, tabId);
 };
 
+// What DatabasePanel does for the active tab once the reference database is known.
+const adoptReference = (store: TestStore, tabId: string, referenceDb: string | null) => {
+    selectTab(store, tabId);
+    store.set(adoptReferenceDatabaseAtom, referenceDb);
+};
+
 describe("database explorer tab state", () => {
     beforeEach(() => {
         localStorage.clear();
@@ -43,7 +51,6 @@ describe("database explorer tab state", () => {
         const mastersSince = new Date("2000-01-01T00:00:00.000Z");
         const mastersUntil = new Date("2020-01-01T00:00:00.000Z");
 
-        store.set(referenceDbAtom, "/db/reference.db3");
         store.set(lichessOptionsDefaultsAtom, {
             ratings: [1000],
             speeds: ["blitz"],
@@ -52,13 +59,15 @@ describe("database explorer tab state", () => {
         store.set(masterOptionsDefaultsAtom, { since: mastersSince });
         initializeTab(store, "tab-a");
         initializeTab(store, "tab-b");
+        adoptReference(store, "tab-a", "/db/reference.duckdb");
+        adoptReference(store, "tab-b", "/db/reference.duckdb");
 
         selectTab(store, "tab-a");
-        store.set(setCurrentLocalDatabaseAtom, "/db/a.db3");
+        store.set(setCurrentLocalDatabaseAtom, "/db/a.duckdb");
         store.set(currentLocalOptionsAtom, (current) => ({
             ...current,
-            player: 11,
-            color: "black",
+            player1: "Player A",
+            outcome: "1-0",
         }));
         store.set(currentDbTypeAtom, "lch_all");
         store.set(currentDbTabAtom, "options");
@@ -72,12 +81,10 @@ describe("database explorer tab state", () => {
             until: mastersUntil,
         }));
 
+        expect(store.get(storedReferenceDbAtom)).toBeNull();
+
         selectTab(store, "tab-b");
-        expect(store.get(currentLocalOptionsAtom)).toMatchObject({
-            path: "/db/reference.db3",
-            player: null,
-            color: "white",
-        });
+        expect(store.get(currentLocalOptionsAtom)).toEqual({ path: "/db/reference.duckdb" });
         expect(store.get(currentDbTypeAtom)).toBe("local");
         expect(store.get(currentDbTabAtom)).toBe("stats");
         expect(store.get(currentLichessOptionsAtom)).toEqual({
@@ -86,7 +93,6 @@ describe("database explorer tab state", () => {
             color: "white",
         });
         expect(store.get(currentMasterOptionsAtom)).toEqual({ since: mastersSince });
-        expect(store.get(referenceDbAtom)).toBe("/db/reference.db3");
         expect(store.get(lichessOptionsDefaultsAtom)).toEqual({
             ratings: [2500],
             speeds: ["classical"],
@@ -103,18 +109,19 @@ describe("database explorer tab state", () => {
         const originalSince = new Date("2001-01-01T00:00:00.000Z");
         const futureSince = new Date("2015-01-01T00:00:00.000Z");
 
-        store.set(referenceDbAtom, "/db/a.db3");
         store.set(lichessOptionsDefaultsAtom, { ratings: [1400], color: "white" });
         store.set(masterOptionsDefaultsAtom, { since: originalSince });
         initializeTab(store, "tab-a");
+        adoptReference(store, "tab-a", "/db/a.duckdb");
 
-        store.set(referenceDbAtom, "/db/b.db3");
         store.set(lichessOptionsDefaultsAtom, { ratings: [2200], color: "black" });
         store.set(masterOptionsDefaultsAtom, { since: futureSince });
         initializeTab(store, "tab-c");
+        adoptReference(store, "tab-c", "/db/b.duckdb");
+        adoptReference(store, "tab-a", "/db/b.duckdb");
 
         selectTab(store, "tab-a");
-        expect(store.get(currentLocalOptionsAtom).path).toBe("/db/a.db3");
+        expect(store.get(currentLocalOptionsAtom).path).toBe("/db/a.duckdb");
         expect(store.get(currentLichessOptionsAtom)).toEqual({
             ratings: [1400],
             color: "white",
@@ -122,7 +129,7 @@ describe("database explorer tab state", () => {
         expect(store.get(currentMasterOptionsAtom)).toEqual({ since: originalSince });
 
         selectTab(store, "tab-c");
-        expect(store.get(currentLocalOptionsAtom).path).toBe("/db/b.db3");
+        expect(store.get(currentLocalOptionsAtom).path).toBe("/db/b.duckdb");
         expect(store.get(currentLichessOptionsAtom)).toEqual({
             ratings: [2200],
             color: "black",
@@ -130,77 +137,167 @@ describe("database explorer tab state", () => {
         expect(store.get(currentMasterOptionsAtom)).toEqual({ since: futureSince });
     });
 
-    it("resets only the active tab player when its database changes", () => {
+    it("takes the reference database only while the tab has none", () => {
+        const store = createStore();
+        initializeTab(store, "tab-a");
+        selectTab(store, "tab-a");
+        expect(store.get(currentLocalOptionsAtom).path).toBeNull();
+
+        store.set(adoptReferenceDatabaseAtom, null);
+        expect(store.get(currentLocalOptionsAtom).path).toBeNull();
+
+        store.set(adoptReferenceDatabaseAtom, "/db/reference.duckdb");
+        expect(store.get(currentLocalOptionsAtom).path).toBe("/db/reference.duckdb");
+
+        store.set(setCurrentLocalDatabaseAtom, "/db/own.duckdb");
+        store.set(adoptReferenceDatabaseAtom, "/db/reference.duckdb");
+        expect(store.get(currentLocalOptionsAtom).path).toBe("/db/own.duckdb");
+    });
+
+    it("keeps a database chosen before the explorer was first opened", () => {
+        const store = createStore();
+        selectTab(store, "tab-a");
+        store.set(currentLocalOptionsAtom, (current) => ({
+            ...current,
+            path: "/db/player.duckdb",
+            player1: "Player A",
+        }));
+
+        initializeTab(store, "tab-a");
+        store.set(adoptReferenceDatabaseAtom, "/db/reference.duckdb");
+
+        expect(store.get(currentLocalOptionsAtom)).toEqual({
+            path: "/db/player.duckdb",
+            player1: "Player A",
+        });
+    });
+
+    it("resets only the active tab's players and tournament when its database changes", () => {
         const store = createStore();
         initializeTab(store, "tab-a");
         initializeTab(store, "tab-b");
 
         selectTab(store, "tab-a");
-        store.set(setCurrentLocalDatabaseAtom, "/db/a.db3");
-        store.set(currentLocalOptionsAtom, (current) => ({ ...current, player: 11 }));
+        store.set(setCurrentLocalDatabaseAtom, "/db/a.duckdb");
+        store.set(currentLocalOptionsAtom, (current) => ({
+            ...current,
+            player1: "Player A",
+            player2: "Opponent A",
+            tournament: "Open A",
+            outcome: "1-0",
+        }));
 
         selectTab(store, "tab-b");
-        store.set(setCurrentLocalDatabaseAtom, "/db/b.db3");
-        store.set(currentLocalOptionsAtom, (current) => ({ ...current, player: 22 }));
+        store.set(setCurrentLocalDatabaseAtom, "/db/b.duckdb");
+        store.set(currentLocalOptionsAtom, (current) => ({ ...current, player1: "Player B" }));
 
         selectTab(store, "tab-a");
-        store.set(setCurrentLocalDatabaseAtom, "/db/a.db3");
-        expect(store.get(currentLocalOptionsAtom).player).toBe(11);
-        store.set(setCurrentLocalDatabaseAtom, "/db/a-2.db3");
-        expect(store.get(currentLocalOptionsAtom).player).toBeNull();
+        store.set(setCurrentLocalDatabaseAtom, "/db/a.duckdb");
+        expect(store.get(currentLocalOptionsAtom).player1).toBe("Player A");
+        store.set(setCurrentLocalDatabaseAtom, "/db/a-2.duckdb");
+        expect(store.get(currentLocalOptionsAtom)).toMatchObject({
+            path: "/db/a-2.duckdb",
+            player1: null,
+            player2: null,
+            tournament: null,
+            outcome: "1-0",
+        });
 
         selectTab(store, "tab-b");
         expect(store.get(currentLocalOptionsAtom)).toMatchObject({
-            path: "/db/b.db3",
-            player: 22,
+            path: "/db/b.duckdb",
+            player1: "Player B",
         });
     });
 
-    it("syncs board FEN only for exact local queries", () => {
+    it("drops a deleted database from every tab that searched it", () => {
         const store = createStore();
         initializeTab(store, "tab-a");
+        initializeTab(store, "tab-b");
+        initializeTab(store, "tab-c");
+        adoptReference(store, "tab-a", "/db/deleted.duckdb");
+        adoptReference(store, "tab-b", "/db/deleted.duckdb");
+        adoptReference(store, "tab-c", "/db/kept.duckdb");
         selectTab(store, "tab-a");
-
-        store.set(syncCurrentLocalFenAtom, "exact-board-fen");
-        expect(store.get(currentLocalOptionsAtom).fen).toBe("exact-board-fen");
-
         store.set(currentLocalOptionsAtom, (current) => ({
             ...current,
-            type: "partial",
-            fen: "partial-custom-fen",
+            player1: "Player A",
+            outcome: "1-0",
         }));
-        store.set(syncCurrentLocalFenAtom, "later-board-fen");
-        expect(store.get(currentLocalOptionsAtom).fen).toBe("partial-custom-fen");
+        selectTab(store, "tab-c");
+        store.set(currentLocalOptionsAtom, (current) => ({ ...current, player1: "Player C" }));
+
+        store.set(forgetLocalDatabaseAtom, "/db/deleted.duckdb");
+
+        selectTab(store, "tab-a");
+        expect(store.get(currentLocalOptionsAtom)).toEqual({
+            path: null,
+            player1: null,
+            player2: null,
+            tournament: null,
+            outcome: "1-0",
+        });
+        store.set(adoptReferenceDatabaseAtom, "/db/reference.duckdb");
+        expect(store.get(currentLocalOptionsAtom).path).toBe("/db/reference.duckdb");
+
+        selectTab(store, "tab-b");
+        expect(store.get(currentLocalOptionsAtom).path).toBeNull();
+
+        selectTab(store, "tab-c");
+        expect(store.get(currentLocalOptionsAtom)).toEqual({
+            path: "/db/kept.duckdb",
+            player1: "Player C",
+        });
     });
 
-    it("uses the current board FEN when returning from a partial query to exact", () => {
+    it("always searches the exact board position", () => {
         const store = createStore();
         initializeTab(store, "tab-a");
         selectTab(store, "tab-a");
 
+        store.set(syncCurrentLocalFenAtom, "board-fen");
+        expect(store.get(currentLocalOptionsAtom).position).toEqual({
+            fen: "board-fen",
+            type_: "exact",
+        });
+
+        const synced = store.get(currentLocalOptionsAtom);
+        store.set(syncCurrentLocalFenAtom, "board-fen");
+        expect(store.get(currentLocalOptionsAtom)).toBe(synced);
+
         store.set(currentLocalOptionsAtom, (current) => ({
             ...current,
-            type: "partial",
-            fen: "partial-custom-fen",
+            position: { fen: "custom-query", type_: "scoutfish" },
         }));
         store.set(syncCurrentLocalFenAtom, "board-after-e4");
-
-        store.set(setCurrentLocalPositionTypeAtom, {
-            type: "partial",
-            boardFen: "different-board-fen",
-        });
-        expect(store.get(currentLocalOptionsAtom)).toMatchObject({
-            type: "partial",
-            fen: "partial-custom-fen",
-        });
-
-        store.set(setCurrentLocalPositionTypeAtom, {
-            type: "exact",
-            boardFen: "board-after-e4",
-        });
-        expect(store.get(currentLocalOptionsAtom)).toMatchObject({
-            type: "exact",
+        expect(store.get(currentLocalOptionsAtom).position).toEqual({
             fen: "board-after-e4",
+            type_: "exact",
+        });
+    });
+
+    it("edits filters without touching the tab's database", () => {
+        const store = createStore();
+        initializeTab(store, "tab-a");
+        adoptReference(store, "tab-a", "/db/a.duckdb");
+        store.set(syncCurrentLocalFenAtom, "board-fen");
+
+        expect(store.get(currentLocalFiltersAtom)).toEqual({
+            position: { fen: "board-fen", type_: "exact" },
+        });
+
+        store.set(currentLocalFiltersAtom, { player1: "Player A", outcome: "1-0" });
+        expect(store.get(currentLocalOptionsAtom)).toEqual({
+            path: "/db/a.duckdb",
+            player1: "Player A",
+            outcome: "1-0",
+        });
+
+        store.set(currentLocalFiltersAtom, (current) => ({ ...current, outcome: "0-1" }));
+        expect(store.get(currentLocalOptionsAtom)).toEqual({
+            path: "/db/a.duckdb",
+            player1: "Player A",
+            outcome: "0-1",
         });
     });
 
@@ -210,7 +307,7 @@ describe("database explorer tab state", () => {
                 initialized: false,
                 panel: "stats",
                 source: "local",
-                localPath: "/db/a.db3",
+                localPath: "/db/a.duckdb",
                 missingExplorerToken: false,
             }),
         ).toBe(false);
@@ -219,7 +316,7 @@ describe("database explorer tab state", () => {
                 initialized: true,
                 panel: "options",
                 source: "local",
-                localPath: "/db/a.db3",
+                localPath: "/db/a.duckdb",
                 missingExplorerToken: false,
             }),
         ).toBe(false);
@@ -256,7 +353,6 @@ describe("database explorer tab state", () => {
         const store = createStore();
         const since = new Date("2012-01-01T00:00:00.000Z");
         selectTab(store, "tab-a");
-        store.set(referenceDbAtom, "/db/default.db3");
         store.set(lichessOptionsDefaultsAtom, { ratings: [1800], color: "black" });
         store.set(masterOptionsDefaultsAtom, { since });
 
@@ -264,7 +360,6 @@ describe("database explorer tab state", () => {
         initializeTab(store, "tab-a");
 
         expect(store.get(currentDatabaseExplorerInitializedAtom)).toBe(true);
-        expect(store.get(currentLocalOptionsAtom).path).toBe("/db/default.db3");
         expect(store.get(currentLichessOptionsAtom)).toEqual({
             ratings: [1800],
             color: "black",
@@ -278,8 +373,8 @@ describe("database explorer tab state", () => {
         const mastersSince = new Date("1990-01-01T00:00:00.000Z");
         initializeTab(store, "source");
         selectTab(store, "source");
-        store.set(setCurrentLocalDatabaseAtom, "/db/source.db3");
-        store.set(currentLocalOptionsAtom, (current) => ({ ...current, player: 44 }));
+        store.set(setCurrentLocalDatabaseAtom, "/db/source.duckdb");
+        store.set(currentLocalOptionsAtom, (current) => ({ ...current, player1: "Source Player" }));
         store.set(currentDbTypeAtom, "lch_all");
         store.set(currentDbTabAtom, "games");
         store.set(currentLichessOptionsAtom, {
@@ -301,8 +396,8 @@ describe("database explorer tab state", () => {
         const duplicateLichess = store.get(currentLichessOptionsAtom);
         const duplicateMaster = store.get(currentMasterOptionsAtom);
         expect(store.get(currentLocalOptionsAtom)).toMatchObject({
-            path: "/db/source.db3",
-            player: 44,
+            path: "/db/source.duckdb",
+            player1: "Source Player",
         });
         expect(store.get(currentDbTypeAtom)).toBe("lch_all");
         expect(store.get(currentDbTabAtom)).toBe("games");
@@ -312,7 +407,7 @@ describe("database explorer tab state", () => {
         expect(duplicateMaster).toEqual(sourceMaster);
         expect(duplicateMaster.since).not.toBe(sourceMaster.since);
 
-        store.set(setCurrentLocalDatabaseAtom, "/db/duplicate.db3");
+        store.set(setCurrentLocalDatabaseAtom, "/db/duplicate.duckdb");
         store.set(currentDbTypeAtom, "lch_master");
         store.set(currentDbTabAtom, "options");
         store.set(currentLichessOptionsAtom, {
@@ -326,8 +421,8 @@ describe("database explorer tab state", () => {
 
         selectTab(store, "source");
         expect(store.get(currentLocalOptionsAtom)).toMatchObject({
-            path: "/db/source.db3",
-            player: 44,
+            path: "/db/source.duckdb",
+            player1: "Source Player",
         });
         expect(store.get(currentDbTypeAtom)).toBe("lch_all");
         expect(store.get(currentDbTabAtom)).toBe("games");
@@ -349,24 +444,21 @@ describe("database explorer tab state", () => {
         const store = createStore();
         initializeTab(store, "tab-a");
         selectTab(store, "tab-a");
-        store.set(setCurrentLocalDatabaseAtom, "/db/stale.db3");
+        store.set(setCurrentLocalDatabaseAtom, "/db/stale.duckdb");
+        store.set(currentLocalOptionsAtom, (current) => ({ ...current, player1: "Stale Player" }));
         store.set(currentDbTypeAtom, "lch_master");
         store.set(currentDbTabAtom, "options");
         store.set(currentLichessOptionsAtom, { ratings: [1000], color: "white" });
         store.set(removeDatabaseExplorerStateAtom, "tab-a");
 
-        store.set(referenceDbAtom, "/db/fresh.db3");
         store.set(lichessOptionsDefaultsAtom, { ratings: [2500], color: "black" });
         store.set(masterOptionsDefaultsAtom, {
             since: new Date("2018-01-01T00:00:00.000Z"),
         });
         initializeTab(store, "tab-a");
+        adoptReference(store, "tab-a", "/db/fresh.duckdb");
 
-        expect(store.get(currentLocalOptionsAtom)).toMatchObject({
-            path: "/db/fresh.db3",
-            player: null,
-            type: "exact",
-        });
+        expect(store.get(currentLocalOptionsAtom)).toEqual({ path: "/db/fresh.duckdb" });
         expect(store.get(currentDbTypeAtom)).toBe("local");
         expect(store.get(currentDbTabAtom)).toBe("stats");
         expect(store.get(currentLichessOptionsAtom)).toEqual({
