@@ -10,7 +10,7 @@
 
 **En-Croissant** is a cross-platform desktop chess GUI built with Tauri 2 (Rust backend + React frontend). It supports multi-engine analysis, repertoire training with spaced repetition, and game imports from Lichess/Chess.com.
 
-This is a personal fork (upstream: `franciscoBSalguworeiro/en-croissant`). The upstream repo has slow development, so this fork may diverge with independent changes. Use `upstream/master` to track upstream and `origin/master` for fork changes.
+This is a personal fork (upstream: `franciscoBSalgueiro/en-croissant`). The fork's work lives on `yason`; `master` only mirrors `upstream/master`. Bringing in an upstream release, and building the app to install, is in `docs/upstream-sync.md`.
 
 ## Related Repos
 

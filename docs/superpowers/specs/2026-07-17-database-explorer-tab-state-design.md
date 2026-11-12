@@ -4,6 +4,13 @@
 
 **Date:** 2026-07-17
 
+> **Changed by the upstream v0.16.1 merge (PR 3, 2026-11-11).** The feature was re-ported onto upstream's DuckDB database layer, and four things in this document no longer hold:
+>
+> - The Rust section (search cache keyed by path, the shared helper) is obsolete: upstream's position caches are per database.
+> - The exact/partial position toggle is gone upstream. The panel always searches the exact board position, so the FEN-resync rules for that toggle no longer apply.
+> - `referenceDbAtom` is validated asynchronously, so initialization no longer copies it. A tab without a database takes the reference when it is known (`adoptReferenceDatabaseAtom`); a tab that has one keeps its own.
+> - Changing a tab's database clears `player1`, `player2` and `tournament`; deleting a database clears it from every tab (`forgetLocalDatabaseAtom`).
+
 ## Problem
 
 The analysis database panel mixes tab-scoped query state with application-wide persisted state.
