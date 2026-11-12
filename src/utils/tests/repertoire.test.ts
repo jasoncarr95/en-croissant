@@ -1,3 +1,6 @@
+import { Chess } from "chessops/chess";
+import { makeFen } from "chessops/fen";
+import { parseSan } from "chessops/san";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PositionStats } from "@/bindings";
 import type { TreeNode } from "@/utils/treeReducer";
@@ -24,6 +27,35 @@ const node = (
     annotations: [],
     comment: "",
 });
+
+// Builds a repertoire from lines of SAN moves, with the FENs the app would store on each node.
+function treeFromLines(lines: string[]) {
+    const root = node(makeFen(Chess.default().toSetup()), null, 0);
+    const seen = new Map<string, { fen: string; pathKey: string }>([
+        ["", { fen: root.fen, pathKey: "" }],
+    ]);
+
+    for (const line of lines) {
+        const pos = Chess.default();
+        let current = root;
+        const path: number[] = [];
+        const played: string[] = [];
+        for (const san of line.split(" ")) {
+            pos.play(parseSan(pos, san)!);
+            played.push(san);
+            let index = current.children.findIndex((child) => child.san === san);
+            if (index === -1) {
+                current.children.push(node(makeFen(pos.toSetup()), san, current.halfMoves + 1));
+                index = current.children.length - 1;
+            }
+            current = current.children[index];
+            path.push(index);
+            seen.set(played.join(" "), { fen: current.fen, pathKey: path.join(",") });
+        }
+    }
+
+    return { root, at: (line: string) => seen.get(line)! };
+}
 
 const stats = (move: string, total: number): PositionStats => ({
     move,
@@ -149,6 +181,44 @@ describe("computeTreeCoverage", () => {
         expect(searched).not.toContain("c6-Nc3");
         expect(coverageMap.has("0,0,0,1")).toBe(false);
         expect(coverageMap.has("0,0,0,1,0")).toBe(false);
+        expect(new Set(searched).size).toBe(searched.length);
+    });
+
+    it("treats move orders that differ only in the halfmove clock as one position", async () => {
+        // Real positions: 3.Nf3 leaves the halfmove clock at 1, 3.c4 resets it to 0, yet the
+        // board is the same and the database counts both as one position.
+        const common = "d4 Nf6 c4 e6 Nf3";
+        const rare = "d4 Nf6 Nf3 e6 c4";
+        const { root, at } = treeFromLines([`${common} d5`, `${rare} d5`]);
+        expect(at(common).fen).not.toBe(at(rare).fen);
+
+        const withoutClocks = (fen: string) => fen.split(" ").slice(0, 4).join(" ");
+        const realDatabase: Record<string, PositionStats[]> = {
+            [withoutClocks(at("").fen)]: [stats("d4", 100)],
+            [withoutClocks(at("d4 Nf6").fen)]: [stats("c4", 60), stats("Nf3", 5)],
+            [withoutClocks(at("d4 Nf6 c4 e6").fen)]: [stats("Nf3", 50)],
+            [withoutClocks(at(`${common} d5`).fen)]: [stats("Nc3", 40)],
+        };
+        searchPosition.mockImplementation(async (options: { position: { fen: string } }) => [
+            realDatabase[withoutClocks(options.position.fen)] ?? [stats("any", 100)],
+            [],
+        ]);
+
+        const { coverageMap, missingGamesMap } = await computeTreeCoverage(
+            root,
+            "black",
+            "/db/reference.duckdb",
+            10,
+        );
+
+        expect(coverageMap.get(at(common).pathKey)).toBeCloseTo(0.25);
+        expect(coverageMap.get(at(rare).pathKey)).toBeCloseTo(0.25);
+        expect(coverageMap.get(at(`${rare} d5`).pathKey)).toBeCloseTo(0.25);
+        expect(missingGamesMap.get(at(rare).pathKey)).toBe(missingGamesMap.get(at(common).pathKey));
+
+        const searched: string[] = searchPosition.mock.calls.map(([options]) =>
+            withoutClocks(options.position.fen),
+        );
         expect(new Set(searched).size).toBe(searched.length);
     });
 

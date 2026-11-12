@@ -16,6 +16,10 @@ export type PositionMove = {
     childIndex: number;
 };
 
+// The database matches a position by pieces, side to move, castling rights and en-passant square.
+// Move orders that differ only in the halfmove clock or move number are therefore one position.
+const positionKey = (fen: string) => fen.split(" ").slice(0, 4).join(" ");
+
 export async function computeTreeCoverage(
     root: TreeNode,
     userColor: "white" | "black",
@@ -42,8 +46,9 @@ export async function computeTreeCoverage(
     async function getDbMoves(
         fen: string,
     ): Promise<{ moves: { move: string; games: number }[]; total: number }> {
-        if (dbMovesCache.has(fen)) {
-            return dbMovesCache.get(fen)!;
+        const position = positionKey(fen);
+        if (dbMovesCache.has(position)) {
+            return dbMovesCache.get(position)!;
         }
 
         const promise = (async () => {
@@ -79,7 +84,7 @@ export async function computeTreeCoverage(
             }
         })();
 
-        dbMovesCache.set(fen, promise);
+        dbMovesCache.set(position, promise);
         return promise;
     }
 
@@ -87,25 +92,26 @@ export async function computeTreeCoverage(
         signal?.throwIfAborted();
 
         const pathKey = path.join(",");
+        const position = positionKey(node.fen);
 
         // A leaf that transposes into an already computed position takes its coverage. A node with
         // moves below it is walked again so those moves get their own entries; its searches are
         // already in dbMovesCache.
-        if (node.children.length === 0 && fenCoverageCache.has(node.fen)) {
-            const cachedCoverage = await fenCoverageCache.get(node.fen)!;
+        if (node.children.length === 0 && fenCoverageCache.has(position)) {
+            const cachedCoverage = await fenCoverageCache.get(position)!;
             coverageMap.set(pathKey, cachedCoverage);
             // Reuse cached db results instead of re-searching
-            if (dbMovesCache.has(node.fen)) {
-                const { total } = await dbMovesCache.get(node.fen)!;
+            if (dbMovesCache.has(position)) {
+                const { total } = await dbMovesCache.get(position)!;
                 gamesMap.set(pathKey, total);
             }
-            missingGamesMap.set(pathKey, fenMissingCache.get(node.fen) ?? 0);
+            missingGamesMap.set(pathKey, fenMissingCache.get(position) ?? 0);
             return cachedCoverage;
         }
 
         const promise = computeNode(node, path);
-        if (node.children.length > 0 && !fenCoverageCache.has(node.fen)) {
-            fenCoverageCache.set(node.fen, promise);
+        if (node.children.length > 0 && !fenCoverageCache.has(position)) {
+            fenCoverageCache.set(position, promise);
         }
         return promise;
     }
@@ -116,6 +122,7 @@ export async function computeTreeCoverage(
         }
 
         const pathKey = path.join(",");
+        const position = positionKey(node.fen);
 
         const { moves: dbMoves, total: totalGames } = await getDbMoves(node.fen);
         gamesMap.set(pathKey, totalGames);
@@ -123,7 +130,7 @@ export async function computeTreeCoverage(
         if (totalGames < minGames) {
             coverageMap.set(pathKey, 1);
             missingGamesMap.set(pathKey, 0);
-            fenMissingCache.set(node.fen, 0);
+            fenMissingCache.set(position, 0);
             return 1;
         }
 
@@ -137,7 +144,7 @@ export async function computeTreeCoverage(
                     .filter((m) => m.games >= minGames)
                     .reduce((max, m) => Math.max(max, m.games), 0);
                 missingGamesMap.set(pathKey, maxMissing);
-                fenMissingCache.set(node.fen, maxMissing);
+                fenMissingCache.set(position, maxMissing);
                 return partialCoverage;
             }
             const significantMoves = dbMoves.filter((m) => m.games >= minGames);
@@ -146,7 +153,7 @@ export async function computeTreeCoverage(
             if (significantTotal === 0) {
                 coverageMap.set(pathKey, 1);
                 missingGamesMap.set(pathKey, 0);
-                fenMissingCache.set(node.fen, 0);
+                fenMissingCache.set(position, 0);
                 return 1;
             }
 
@@ -169,19 +176,19 @@ export async function computeTreeCoverage(
             }
             coverageMap.set(pathKey, coverage);
             missingGamesMap.set(pathKey, maxMissingChildGames);
-            fenMissingCache.set(node.fen, maxMissingChildGames);
+            fenMissingCache.set(position, maxMissingChildGames);
             return coverage;
         }
         if (node.children.length === 0) {
             coverageMap.set(pathKey, 0);
             missingGamesMap.set(pathKey, totalGames);
-            fenMissingCache.set(node.fen, totalGames);
+            fenMissingCache.set(position, totalGames);
             return 0;
         }
         const childCoverage = await compute(node.children[0], [...path, 0]);
         coverageMap.set(pathKey, childCoverage);
         missingGamesMap.set(pathKey, 0);
-        fenMissingCache.set(node.fen, 0);
+        fenMissingCache.set(position, 0);
         return childCoverage;
     }
 
@@ -192,7 +199,7 @@ export async function computeTreeCoverage(
     // common stays unsearched.
     async function computeTransposedPaths(node: TreeNode, path: number[]): Promise<void> {
         signal?.throwIfAborted();
-        if (!coverageMap.has(path.join(",")) && dbMovesCache.has(node.fen)) {
+        if (!coverageMap.has(path.join(",")) && dbMovesCache.has(positionKey(node.fen))) {
             await compute(node, path);
         }
         // Same rule as the main walk: every opponent move, but only your main reply.
